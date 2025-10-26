@@ -51,7 +51,7 @@
 <body>
 <header><h1>لوحة المتابعة اللحظية — Cardiac Pharmacy Tickets</h1></header>
 
-<!-- PASSWORD gate (يطلب عند فتح التبويب لأول مرة فقط؛ الرفرش لا) -->
+<!-- PASSWORD gate -->
 <div id="gate" class="overlay" style="display:none">
   <h2>🔒 أدخل كلمة المرور</h2>
   <input id="pw" type="password" placeholder="Password" />
@@ -60,7 +60,6 @@
 </div>
 
 <div id="app" class="wrap" style="display:none">
-  <!-- إحصاءات حسب التاريخ/الفلاتر -->
   <div class="bar">
     <span class="stat">إجمالي التذاكر: <b id="statTotal">0</b></span>
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
@@ -68,7 +67,6 @@
     <span class="stat">قيد الانتظار: <b id="statWaiting">0</b></span>
   </div>
 
-  <!-- فلاتر -->
   <div class="filters">
     <div class="field"><label for="fMrn">بحث حسب MRN</label><input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" /></div>
     <div class="field"><label for="fTicket">بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
@@ -79,7 +77,6 @@
     </div>
   </div>
 
-  <!-- الجدول -->
   <div class="grid">
     <table>
       <thead><tr>
@@ -93,10 +90,7 @@
 </div>
 
 <script>
-/* ========= Password gate =========
-   - نخزن النجاح في sessionStorage → ينجو مع refresh
-   - ينمسح عند إغلاق التبويب → سيُطلب الباس مجددًا
-*/
+/* ========= Password gate ========= */
 const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
 (function gate(){
   const ok = sessionStorage.getItem(PASS_KEY)===PASS_VAL;
@@ -150,7 +144,22 @@ function startApp(){
   const rows=new Map(); // key=ticket
   function zp(n){return n<10?('0'+n):(''+n);}
   function fmt(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`; }
-  function sameDate(iso,ymd){ if(!iso||!ymd) return true; const d=new Date(iso); if(isNaN(d)) return false; return d.toISOString().slice(0,10)===ymd; }
+
+  // ✅ تعديل: مطابقة التاريخ "محليًا" وليس UTC
+  function sameDate(iso, ymd){
+    if(!iso || !ymd) return true;
+    const d = new Date(iso);
+    if(isNaN(d)) return false;
+    const localYmd = new Date(d.getTime() - d.getTimezoneOffset()*60000)
+                      .toISOString().slice(0,10);
+    return localYmd === ymd;
+  }
+
+  // يحوّل ٠١٢٣٤٥٦٧٨٩ إلى 0123456789
+  function normalizeDigits(s){
+    return String(s).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+  }
+
   // يقبل {ts} أو رقم ms أو ISO
   function coerce(raw){
     if(raw==null) return null;
@@ -180,20 +189,16 @@ function startApp(){
   /* ===== Sticky merge: تحديث حي بدون نزول حالة أو حذف ===== */
   function isEmpty(v){ return v===undefined || v===null || v===false || v==='' }
   function mergeSticky(rec, patch){
-    // لا نسمح بتصفير printed/served بعد رفعها
     if (!isEmpty(patch.printed) && patch.printed===true) rec.printed = true;
     if (!isEmpty(patch.served)  && patch.served ===true) rec.served  = true;
 
-    // أول طابع طباعة فقط
     if (!isEmpty(patch.tPrinted) && !rec.tPrinted) rec.tPrinted = patch.tPrinted;
 
-    // أول طابع خدمة صالح فقط (بعد الطباعة)
     if (!isEmpty(patch.tServed) && !rec.tServed) {
       const tmp = { tPrinted: rec.tPrinted || patch.tPrinted || null, tServed: patch.tServed };
       if (isValidServed(tmp)) rec.tServed = patch.tServed;
     }
 
-    // MRN أول قيمة غير فاضية فقط
     if (!isEmpty(patch.mrn) && !rec.mrn) rec.mrn = String(patch.mrn);
     return rec;
   }
@@ -211,8 +216,9 @@ function startApp(){
   const rTS=db.ref(`${ROOT}/times/served`);
   const rCalls=db.ref(`${ROOT}/calls`);
   const rTickets=db.ref(`${ROOT}/tickets`);
+  const rMRN=db.ref(`${ROOT}/mrn`);           // ✅ جديد: مسار بديل للـMRN
 
-  // printed: لا صف بدون طباعة. نتجاهل أي تغيير فارغ/false
+  // printed
   rPrinted.on('child_added', (c)=>{
     const tp = coerce(c.val());
     if (tp) upsert(c.key, { printed:true, tPrinted:tp });
@@ -220,10 +226,9 @@ function startApp(){
   rPrinted.on('child_changed', (c)=>{
     const tp = coerce(c.val());
     if (tp) upsert(c.key, { printed:true, tPrinted:tp });
-    // لو tp فاضي/غير صالح → نتجاهل (لا ننزل الحالة)
   });
 
-  // times/printed: نثبّت أول طابع فقط
+  // times/printed
   rTP.on('child_added', (c)=>{
     const tp = coerce(c.val());
     if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
@@ -233,7 +238,7 @@ function startApp(){
     if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
   });
 
-  // served: نرفع لـ true فقط، ونتجاهل false/null
+  // served
   rServed.on('child_added', (c)=>{
     if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
   });
@@ -241,7 +246,7 @@ function startApp(){
     if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
   });
 
-  // calls: نأخذ أول طابع خدمة صالح فقط
+  // calls
   rCalls.on('child_added', (c)=>{
     const ts = coerce(c.val());
     if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
@@ -251,7 +256,7 @@ function startApp(){
     if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
   });
 
-  // times/served: نفس الشيء (أول قيمة صالحة فقط)
+  // times/served
   rTS.on('child_added', (c)=>{
     const ts = coerce(c.val());
     if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
@@ -261,27 +266,40 @@ function startApp(){
     if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
   });
 
-  // tickets (MRN): نثبّت أول MRN فقط ولا ننزل لقيمة فاضية
+  // tickets (MRN)
   rTickets.on('child_added', (c)=>{
     if (!rows.has(c.key)) return;
     const v = c.val();
-    const m = (v && v.mrn!=null) ? String(v.mrn) : '';
+    const m = (v && v.mrn!=null) ? normalizeDigits(String(v.mrn)) : '';
     if (m) upsert(c.key, { mrn:m });
   });
   rTickets.on('child_changed', (c)=>{
     if (!rows.has(c.key)) return;
     const v = c.val();
-    const m = (v && v.mrn!=null) ? String(v.mrn) : '';
+    const m = (v && v.mrn!=null) ? normalizeDigits(String(v.mrn)) : '';
     if (m) upsert(c.key, { mrn:m });
   });
 
-  // 6) Render حسب التاريخ والفلترة، وحالة Served منطقية
+  // ✅ MRN من المسار البديل /mrn/<ticket>
+  rMRN.on('child_added', (c)=>{
+    if (!rows.has(c.key)) return;
+    const m = c.val();
+    const text = (m!=null && m!=='') ? normalizeDigits(String(m)) : '';
+    if (text) upsert(c.key, { mrn:text });
+  });
+  rMRN.on('child_changed', (c)=>{
+    if (!rows.has(c.key)) return;
+    const m = c.val();
+    const text = (m!=null && m!=='') ? normalizeDigits(String(m)) : '';
+    if (text) upsert(c.key, { mrn:text });
+  });
+
+  // 6) Render
   function render(){
     const mrnF=fMrn.value.trim();
     const tkF=fTk.value.trim();
     const dateF=fDate.value;
 
-    // يظهر المطبوعة فقط + تاريخ الطباعة + باقي الفلاتر
     const base=[...rows.values()].filter(r=>{
       const isPrinted=r.printed||!!r.tPrinted;
       if(!isPrinted) return false;
@@ -292,11 +310,11 @@ function startApp(){
     }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
 
     tbody.innerHTML=base.map(r=>{
-      const served = (!!r.served) || isValidServed(r);      // الحالة المنطقية
+      const served = (!!r.served) || isValidServed(r);
       const printed= (!!r.printed) || !!r.tPrinted;
       const status = served ? 'Served' : (printed ? 'Printed' : 'No time');
       const badge  = served ? 'ok'     : (printed ? 'pending' : 'danger');
-      const servedCell = served ? fmt(r.tServed) : '';      // يظل فاضي حتى يتنادَى
+      const servedCell = served ? fmt(r.tServed) : '';
       return `<tr>
         <td><b>#${r.ticket}</b></td>
         <td>${r.mrn || ''}</td>
@@ -307,7 +325,6 @@ function startApp(){
       </tr>`;
     }).join('');
 
-    // إحصاءات على المعروض (تاريخ/فلاتر فقط)
     statTotal.textContent   = base.length;
     statPrinted.textContent = base.filter(r=> r.printed || !!r.tPrinted).length;
     statServed.textContent  = base.filter(r=> (!!r.served) || isValidServed(r)).length;
@@ -317,10 +334,9 @@ function startApp(){
     }).length;
   }
 
-  // تحديث WT كل ثانية (خفيف وعلى المعروض فقط)
   setInterval(render, 1000);
 
-  // تصدير CSV للصفوف المعروضة
+  // CSV
   function exportCSV(){
     const headers=['Ticket','MRN','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
     const out=[headers.join(',')];
