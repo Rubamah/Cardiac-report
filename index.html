@@ -234,28 +234,41 @@ async function loadReport(){
   const tickets = Object.keys(printedObj).sort((a,b)=>Number(a)-Number(b));
 
   const rows = [];
-  for (const n of tickets){
-    if (filterT && n !== filterT) continue;
+const rows = await Promise.all(tickets.map(async (n) => {
+  if (filterT && n !== filterT) return null;
 
-    const [mrn, printedTs, callData] = await Promise.all([
-      getMrn(n),
-      getPrintedTs(n),
-      getCallData(Number(n))
-    ]);
-    const callTs = callData.ts;
-    const win    = callData.window || "";
+  const [mrn, printedTs, callData] = await Promise.all([
+    getMrn(n),
+    getPrintedTs(n),
+    getCallData(Number(n))
+  ]);
+  const callTs = callData.ts;
+  const win = callData.window || "";
 
-    if (filterM && (!mrn || !String(mrn).includes(filterM))) continue;
-    if (filterW && String(win||"") !== filterW) continue;
+  if (filterM && (!mrn || !String(mrn).includes(filterM))) return null;
+  if (filterW && String(win||"") !== filterW) return null;
 
-    const refTs = (typeof printedTs === "number") ? printedTs
-                 : (typeof callTs === "number") ? callTs
-                 : null;
+  const refTs = (typeof printedTs === "number") ? printedTs
+               : (typeof callTs === "number") ? callTs
+               : null;
 
-    if (refTs !== null) {
-      if (refTs < from || refTs > to) continue;
-    }
+  if (refTs !== null && (refTs < from || refTs > to)) return null;
 
+  const waitMin = (typeof callTs === "number" && typeof printedTs === "number")
+    ? ((callTs - printedTs)/60000).toFixed(1)
+    : "";
+
+  return {
+    n,
+    mrn: mrn || "",
+    printedTs: printedTs || "",
+    callTs: callTs || "",
+    win: win || "",
+    waitMin
+  };
+}));
+
+const finalRows = rows.filter(Boolean);
     const waitMin = (typeof callTs === "number" && typeof printedTs === "number")
       ? ((callTs - printedTs)/60000).toFixed(1)
       : "";
