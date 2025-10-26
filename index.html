@@ -133,14 +133,23 @@
 </div>
 
 <script>
-/* ====== الحماية بكلمة المرور ====== */
+/* ====== الحماية بكلمة المرور (Refresh لا يطلب – تبويب جديد يطلب) ====== */
 (function(){
-  const PASS="PhReport"; // ← هنا كلمة المرور (مطابقة لحساسيتك)
-  const $=(id)=>document.getElementById(id);
-  $("go").onclick=()=>{
-    const v=$("pw").value.trim();
-    if(v!==PASS){ $("err").textContent="كلمة المرور غير صحيحة"; return; }
-    $("gate").style.display="none";
+  const PASS="PhReport";
+  const gate = document.getElementById("gate");
+  const err  = document.getElementById("err");
+  const pw   = document.getElementById("pw");
+
+  // لو سبق تم التحقق في نفس التبويب → لا نظهر البوابة
+  if (sessionStorage.getItem("reportAuthOK")==="1") {
+    gate.style.display="none";
+  }
+
+  document.getElementById("go").onclick=()=>{
+    const val = (pw.value||"").trim();
+    if (val!==PASS){ err.textContent="كلمة المرور غير صحيحة"; return; }
+    sessionStorage.setItem("reportAuthOK","1");
+    gate.style.display="none";
   };
 })();
 
@@ -178,13 +187,10 @@ function toCsv(rows){
 }
 
 /* ====== دوال جلب البيانات ====== */
-// MRN
 async function getMrn(n){
   const s = await db.ref(`${ROOT}/mrn/${n}`).get();
   return s.exists()? s.val() : null;
 }
-
-// أول وقت نداء (وأول نافذة) من /calls
 async function getCallData(n){
   const snap = await db.ref(`${ROOT}/calls`).orderByChild("number").equalTo(n).get();
   let firstTs = null, win = "";
@@ -197,15 +203,13 @@ async function getCallData(n){
   });
   return { ts:firstTs, window:win };
 }
-
-// وقت الطباعة من /printed: يقبل true/number/object
 async function getPrintedTs(n){
   const s = await db.ref(`${ROOT}/printed/${n}`).get();
   if (!s.exists()) return null;
   const v = s.val();
-  if (typeof v === "number") return v;          // timestamp مباشر
-  if (v && typeof v === "object" && v.ts) return v.ts; // كائن فيه ts
-  return null; // true/false أو أشكال أخرى
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object" && v.ts) return v.ts;
+  return null;
 }
 
 /* ====== تحميل التقرير ====== */
@@ -216,25 +220,21 @@ async function loadReport(){
   tbody.innerHTML = `<tr><td colspan="6">جارٍ التحميل...</td></tr>`;
   countInfo.textContent="";
 
-  // نطاق التاريخ
   const fromVal = $("#fromDate").value || "1970-01-01";
   const toVal   = $("#toDate").value   || "2100-01-01";
   const from = new Date(fromVal).getTime();
   const to   = new Date(toVal).getTime();
 
-  // فلاتر
   const filterT = $("#filterTicket").value.trim();
   const filterW = $("#filterWindow").value.trim();
   const filterM = $("#filterMRN").value.trim();
 
-  // مفاتيح التذاكر من printed (أياً كانت القيم)
   const printedSnap = await db.ref(`${ROOT}/printed`).get();
   const printedObj = printedSnap.val() || {};
   const tickets = Object.keys(printedObj).sort((a,b)=>Number(a)-Number(b));
 
   const rows = [];
   for (const n of tickets){
-    // فلتر التذكرة
     if (filterT && n !== filterT) continue;
 
     const [mrn, printedTs, callData] = await Promise.all([
@@ -245,13 +245,9 @@ async function loadReport(){
     const callTs = callData.ts;
     const win    = callData.window || "";
 
-    // فلتر MRN
     if (filterM && (!mrn || !String(mrn).includes(filterM))) continue;
-
-    // فلتر الشباك
     if (filterW && String(win||"") !== filterW) continue;
 
-    // مرجع التاريخ: أول ما يتوفر (طباعة أو نداء)
     const refTs = (typeof printedTs === "number") ? printedTs
                  : (typeof callTs === "number") ? callTs
                  : null;
@@ -260,7 +256,6 @@ async function loadReport(){
       if (refTs < from || refTs > to) continue;
     }
 
-    // مدة الانتظار
     const waitMin = (typeof callTs === "number" && typeof printedTs === "number")
       ? ((callTs - printedTs)/60000).toFixed(1)
       : "";
@@ -275,7 +270,6 @@ async function loadReport(){
     });
   }
 
-  // إخراج الجدول
   tbody.innerHTML="";
   if (rows.length===0){
     tbody.innerHTML = `<tr><td colspan="6" class="muted">لا توجد بيانات ضمن نطاق التصفية المحدد</td></tr>`;
@@ -322,7 +316,6 @@ function exportCsv(){
   });
   if(rows.length===0){ alert("لا توجد نتائج لتصديرها."); return; }
 
-  // لو كانت الخلايا مُهيأة نصيًا، نعيد بناء CSV من صفوف الجدول
   const header = ["Ticket","MRN","Printed At","Called At","Window","Waiting (min)"];
   const esc = (v)=> `"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[header.map(esc).join(",")];
@@ -341,7 +334,6 @@ function exportCsv(){
 document.getElementById("btnLoad").onclick = loadReport;
 document.getElementById("btnExport").onclick = exportCsv;
 
-// افتراضي: اليوم
 (function setToday(){
   const today = new Date();
   const y = today.getFullYear();
