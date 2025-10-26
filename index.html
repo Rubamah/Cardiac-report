@@ -1,134 +1,151 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pharmacy Report</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Cardiac – Report</title>
 <style>
-  body {
-    background:#f5f7fb;
-    font-family:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    color:#0f172a; margin:0; padding:0; text-align:center;
+  :root{
+    --bg:#f5f7fb; --ink:#0f172a; --card:#fff; --muted:#64748b;
+    --primary:#0b57d0; --border:#d1d5db; --good:#16a34a; --warn:#f59e0b;
   }
-  h1 { margin:24px 0 12px; }
-  #filters {
-    display:flex; flex-wrap:wrap; justify-content:center; gap:10px;
-    margin:10px auto 20px; max-width:800px;
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 16px;text-align:center}
+  h1{margin:6px 0 2px;font-size:clamp(20px,3.8vw,28px)}
+  .sub{color:var(--muted);font-size:14px}
+
+  .wrap{width:min(1100px,96vw);margin:10px auto 28px;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px}
+  .filters{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+    gap:12px;margin-bottom:14px
   }
-  input, select, button {
-    padding:10px 14px; font-size:16px; border-radius:8px; border:1px solid #cbd5e1;
+  .filters label{display:flex;flex-direction:column;gap:6px;font-weight:700;font-size:14px}
+  .filters input, .filters select{
+    padding:10px;border:1px solid var(--border);border-radius:10px;font-size:16px
   }
-  table {
-    width:90%; margin:20px auto; border-collapse:collapse; background:#fff;
+  .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .btn{
+    border:0;border-radius:12px;padding:10px 16px;font-weight:800;cursor:pointer;font-size:16px
   }
-  th, td {
-    padding:10px; border:1px solid #cbd5e1; text-align:center;
+  .btn.primary{background:var(--primary);color:#fff}
+  .btn.ghost{background:#eef2ff;color:#1e293b}
+  .tableWrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+  table{width:100%;border-collapse:collapse;min-width:840px}
+  thead th{
+    background:#f1f5f9;position:sticky;top:0;z-index:1;
+    text-align:center;padding:10px;border-bottom:1px solid var(--border);font-weight:800
   }
-  th { background:#2563eb; color:#fff; }
-  button {
-    background:#2563eb; color:#fff; border:0; cursor:pointer; font-weight:600;
+  tbody td{padding:10px;border-bottom:1px solid #e5e7eb;text-align:center}
+  tfoot td{padding:10px;background:#fafafa;font-weight:800}
+  .muted{color:var(--muted)}
+  .ok{color:var(--good);font-weight:800}
+  .warn{color:#b45309;font-weight:800}
+
+  /* شاشة قفل كلمة المرور */
+  #gate{
+    position:fixed;inset:0;background:#0b1220ee;color:#fff;display:flex;
+    align-items:center;justify-content:center;z-index:9999
   }
-  #exportBtn { margin-top:20px; }
-  #app { display:none; }
-  /* Password Gate */
-  #authGate{
-    position:fixed; inset:0; z-index:9999;
-    display:flex; align-items:center; justify-content:center;
-    background:rgba(0,0,0,.85); color:#fff; flex-direction:column;
-    font-family:-apple-system,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  #gate .box{
+    width:min(420px,92vw);background:#0f172a;border:1px solid #1f2937;
+    border-radius:16px;padding:20px;text-align:center
   }
-  #authBox{
-    background:#0f172a; padding:24px; border-radius:14px; width:min(400px,90%);
-    box-shadow:0 10px 30px rgba(0,0,0,.5); text-align:center;
+  #gate h2{margin:6px 0 4px}
+  #gate input{
+    width:100%;padding:12px;border-radius:10px;border:1px solid #243b55;
+    background:#111827;color:#fff;text-align:center;font-size:16px;margin-top:12px
   }
-  #authBox input{
-    width:100%; margin-top:10px; padding:12px; font-size:18px; border-radius:8px; border:0;
-    text-align:center;
+  #gate button{
+    margin-top:12px;padding:10px 16px;border:0;border-radius:12px;background:#2563eb;
+    color:#fff;font-weight:800;cursor:pointer;font-size:16px;width:100%
   }
-  #authBox button{
-    margin-top:14px; width:100%; padding:12px; font-size:18px; border:0;
-    background:#2563eb; color:#fff; border-radius:8px; cursor:pointer;
-  }
-  #authErr{ color:#fca5a5; margin-top:8px; font-size:14px; }
+  #err{color:#fca5a5;min-height:20px;margin-top:6px;font-size:14px}
 </style>
 
-<!-- Firebase -->
+<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
 
-<!-- ===== PASSWORD GATE ===== -->
-<div id="authGate">
-  <div id="authBox">
-    <h2>Protected Report</h2>
-    <p>أدخل كلمة المرور للوصول إلى التقرير</p>
-    <input id="authPw" type="password" placeholder="Password" />
-    <button id="authBtn">دخول</button>
-    <div id="authErr"></div>
+<header>
+  <h1>تقرير الصيدلية – Cardiac</h1>
+  <div class="sub">تصفية حسب التاريخ/التذكرة/الشباك/MRN مع تصدير CSV</div>
+</header>
+
+<div class="wrap">
+  <div class="filters">
+    <label>من تاريخ
+      <input type="date" id="fromDate">
+    </label>
+    <label>إلى تاريخ
+      <input type="date" id="toDate">
+    </label>
+    <label>رقم التذكرة (اختياري)
+      <input type="text" id="filterTicket" placeholder="مثال: 125">
+    </label>
+    <label>رقم الشباك (اختياري)
+      <input type="text" id="filterWindow" placeholder="مثال: 3">
+    </label>
+    <label>MRN (اختياري)
+      <input type="text" id="filterMRN" placeholder="جزء من MRN أو كامل">
+    </label>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary" id="btnLoad">تحميل التقرير</button>
+    <button class="btn ghost" id="btnExport">تصدير CSV (Excel)</button>
+    <span class="muted" id="countInfo"></span>
+  </div>
+
+  <div class="tableWrap">
+    <table id="reportTable" dir="rtl">
+      <thead>
+        <tr>
+          <th>التذكرة</th>
+          <th>MRN</th>
+          <th>وقت الطباعة</th>
+          <th>وقت النداء</th>
+          <th>الشباك</th>
+          <th>مدة الانتظار (دقيقة)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="6" class="muted">اضغط "تحميل التقرير"</td></tr>
+      </tbody>
+      <tfoot>
+        <tr><td colspan="6" id="summaryCell"></td></tr>
+      </tfoot>
+    </table>
   </div>
 </div>
 
-<!-- ===== REPORT APP ===== -->
-<div id="app">
-  <h1>Pharmacy Report</h1>
-
-  <div id="filters">
-    <label>من: <input type="date" id="fromDate"></label>
-    <label>إلى: <input type="date" id="toDate"></label>
-    <input type="text" id="filterTicket" placeholder="رقم التذكرة">
-    <input type="text" id="filterWindow" placeholder="الشباك">
-    <input type="text" id="filterMRN" placeholder="MRN">
-    <button onclick="loadReport()">عرض</button>
+<!-- بوابة كلمة المرور -->
+<div id="gate">
+  <div class="box">
+    <h2>محمي بكلمة مرور</h2>
+    <div class="muted">أدخل كلمة المرور للوصول إلى التقرير</div>
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password" />
+    <div id="err"></div>
+    <button id="go">دخول</button>
   </div>
-
-  <table id="reportTable">
-    <thead>
-      <tr>
-        <th>رقم التذكرة</th>
-        <th>MRN</th>
-        <th>وقت الطباعة</th>
-        <th>وقت النداء</th>
-        <th>الشباك</th>
-        <th>مدة الانتظار (د)</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-
-  <button id="exportBtn" onclick="exportCSV()">تصدير إلى Excel (CSV)</button>
 </div>
 
 <script>
-/* ========== Password Lock ========== */
+/* ====== الحماية بكلمة المرور ====== */
 (function(){
-  const PASS = "PhReport";
-  const KEY = "phreport_auth_ok";
-  const gate = document.getElementById('authGate');
-  const app = document.getElementById('app');
-  const btn = document.getElementById('authBtn');
-  const inp = document.getElementById('authPw');
-  const err = document.getElementById('authErr');
-
-  function unlock(){
-    sessionStorage.setItem(KEY,"1");
-    gate.style.display="none";
-    app.style.display="block";
-  }
-
-  if(sessionStorage.getItem(KEY)==="1"){ unlock(); }
-  else{
-    btn.onclick = tryLogin;
-    inp.onkeydown = e => { if(e.key==="Enter") tryLogin(); };
-    function tryLogin(){
-      if(inp.value.trim()===PASS) unlock();
-      else err.textContent="كلمة المرور غير صحيحة.";
-    }
-  }
+  const PASS="PhReport"; // ← هنا كلمة المرور (مطابقة لحساسيتك)
+  const $=(id)=>document.getElementById(id);
+  $("go").onclick=()=>{
+    const v=$("pw").value.trim();
+    if(v!==PASS){ $("err").textContent="كلمة المرور غير صحيحة"; return; }
+    $("gate").style.display="none";
+  };
 })();
 
-/* ========== Firebase ========== */
-const cfg = {
+/* ====== Firebase ====== */
+const cfg={
   apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",
   authDomain:"q-matic-b7d77.firebaseapp.com",
   databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",
@@ -138,98 +155,201 @@ const cfg = {
   appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"
 };
 firebase.initializeApp(cfg);
-const db = firebase.database();
-const ROOT = "cardiac_demo";
+const db=firebase.database();
+const ROOT="cardiac_demo";
 
-/* ========== Report Functions ========== */
+/* ====== أدوات مساعدة ====== */
+const $ = (sel)=>document.querySelector(sel);
+function pad(n){ return String(n).padStart(2,"0"); }
+function formatTs(ts){
+  if(!ts && ts!==0) return "-";
+  const d=new Date(Number(ts));
+  if (isNaN(d.getTime())) return "-";
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function toCsv(rows){
+  const esc = (v)=> `"${String(v??"").replace(/"/g,'""')}"`;
+  const header = ["Ticket","MRN","Printed At","Called At","Window","Waiting (min)"];
+  const lines = [header.map(esc).join(",")];
+  rows.forEach(r=>{
+    lines.push([r.n, r.mrn||"", formatTs(r.printedTs), formatTs(r.callTs), r.win||"", r.waitMin||""].map(esc).join(","));
+  });
+  return lines.join("\r\n");
+}
+
+/* ====== دوال جلب البيانات ====== */
+// MRN
 async function getMrn(n){
   const s = await db.ref(`${ROOT}/mrn/${n}`).get();
-  return s.exists() ? s.val() : "";
+  return s.exists()? s.val() : null;
 }
+
+// أول وقت نداء (وأول نافذة) من /calls
+async function getCallData(n){
+  const snap = await db.ref(`${ROOT}/calls`).orderByChild("number").equalTo(n).get();
+  let firstTs = null, win = "";
+  snap.forEach(e=>{
+    const v = e.val() || {};
+    if (v.ts && (firstTs===null || v.ts < firstTs)) {
+      firstTs = v.ts;
+      win = v.window ?? "";
+    }
+  });
+  return { ts:firstTs, window:win };
+}
+
+// وقت الطباعة من /printed: يقبل true/number/object
 async function getPrintedTs(n){
   const s = await db.ref(`${ROOT}/printed/${n}`).get();
-  return s.exists()? s.val() : "";
-}
-async function getCallData(n){
-  const snap = await db.ref(`${ROOT}/calls`).orderByChild("number").equalTo(n).limitToFirst(1).get();
-  let res={ts:"",window:""};
-  snap.forEach(e=>{
-    const v=e.val()||{};
-    res.ts=v.ts||"";
-    res.window=v.window||"";
-  });
-  return res;
+  if (!s.exists()) return null;
+  const v = s.val();
+  if (typeof v === "number") return v;          // timestamp مباشر
+  if (v && typeof v === "object" && v.ts) return v.ts; // كائن فيه ts
+  return null; // true/false أو أشكال أخرى
 }
 
+/* ====== تحميل التقرير ====== */
 async function loadReport(){
-  const tbody=document.querySelector("#reportTable tbody");
-  tbody.innerHTML="<tr><td colspan='6'>جارٍ التحميل...</td></tr>";
+  const tbody=$("#reportTable tbody");
+  const countInfo=$("#countInfo");
+  const summaryCell=$("#summaryCell");
+  tbody.innerHTML = `<tr><td colspan="6">جارٍ التحميل...</td></tr>`;
+  countInfo.textContent="";
 
-  const from=new Date(document.getElementById("fromDate").value||"1970-01-01").getTime();
-  const to=new Date(document.getElementById("toDate").value||"2100-01-01").getTime();
-  const filterT=document.getElementById("filterTicket").value.trim();
-  const filterW=document.getElementById("filterWindow").value.trim();
-  const filterM=document.getElementById("filterMRN").value.trim();
+  // نطاق التاريخ
+  const fromVal = $("#fromDate").value || "1970-01-01";
+  const toVal   = $("#toDate").value   || "2100-01-01";
+  const from = new Date(fromVal).getTime();
+  const to   = new Date(toVal).getTime();
 
-  const printedSnap=await db.ref(`${ROOT}/printed`).get();
-  const data=[];
-  for(const [n,val] of Object.entries(printedSnap.val()||{})){
-    const num=Number(n);
-    const printedTs = val.ts || val || "";
-    if(!printedTs) continue;
-    if(printedTs<from || printedTs>to) continue;
-    if(filterT && n!=filterT) continue;
+  // فلاتر
+  const filterT = $("#filterTicket").value.trim();
+  const filterW = $("#filterWindow").value.trim();
+  const filterM = $("#filterMRN").value.trim();
 
-    const mrn=await getMrn(n);
-    if(filterM && !mrn.includes(filterM)) continue;
+  // مفاتيح التذاكر من printed (أياً كانت القيم)
+  const printedSnap = await db.ref(`${ROOT}/printed`).get();
+  const printedObj = printedSnap.val() || {};
+  const tickets = Object.keys(printedObj).sort((a,b)=>Number(a)-Number(b));
 
-    const {ts:callTs,window:win}=await getCallData(num);
-    if(filterW && String(win)!=filterW) continue;
+  const rows = [];
+  for (const n of tickets){
+    // فلتر التذكرة
+    if (filterT && n !== filterT) continue;
 
-    const waitMin= (callTs && printedTs)? ((callTs-printedTs)/60000).toFixed(1):"";
-    data.push({n,mrn,printedTs,callTs,win,waitMin});
+    const [mrn, printedTs, callData] = await Promise.all([
+      getMrn(n),
+      getPrintedTs(n),
+      getCallData(Number(n))
+    ]);
+    const callTs = callData.ts;
+    const win    = callData.window || "";
+
+    // فلتر MRN
+    if (filterM && (!mrn || !String(mrn).includes(filterM))) continue;
+
+    // فلتر الشباك
+    if (filterW && String(win||"") !== filterW) continue;
+
+    // مرجع التاريخ: أول ما يتوفر (طباعة أو نداء)
+    const refTs = (typeof printedTs === "number") ? printedTs
+                 : (typeof callTs === "number") ? callTs
+                 : null;
+
+    if (refTs !== null) {
+      if (refTs < from || refTs > to) continue;
+    }
+
+    // مدة الانتظار
+    const waitMin = (typeof callTs === "number" && typeof printedTs === "number")
+      ? ((callTs - printedTs)/60000).toFixed(1)
+      : "";
+
+    rows.push({
+      n,
+      mrn: mrn || "",
+      printedTs: (typeof printedTs === "number") ? printedTs : "",
+      callTs:    (typeof callTs === "number") ? callTs : "",
+      win:       win || "",
+      waitMin
+    });
   }
 
+  // إخراج الجدول
   tbody.innerHTML="";
-  if(data.length===0){
-    tbody.innerHTML="<tr><td colspan='6'>لا توجد بيانات</td></tr>";
+  if (rows.length===0){
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">لا توجد بيانات ضمن نطاق التصفية المحدد</td></tr>`;
+    countInfo.textContent = "0 نتيجة";
+    summaryCell.textContent = "";
     return;
   }
 
-  for(const d of data){
-    const row=document.createElement("tr");
-    row.innerHTML=`
+  let totalWait=0, waitCount=0;
+  rows.forEach(d=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML = `
       <td>${d.n}</td>
-      <td>${d.mrn||"-"}</td>
+      <td>${d.mrn || "-"}</td>
       <td>${formatTs(d.printedTs)}</td>
       <td>${formatTs(d.callTs)}</td>
-      <td>${d.win||"-"}</td>
-      <td>${d.waitMin||"-"}</td>
+      <td>${d.win || "-"}</td>
+      <td>${d.waitMin || "-"}</td>
     `;
-    tbody.appendChild(row);
-  }
-}
+    tbody.appendChild(tr);
 
-function formatTs(t){
-  if(!t) return "-";
-  const d=new Date(t);
-  return d.toLocaleString("ar-SA",{hour12:false});
-}
-
-/* ========== Export CSV ========== */
-function exportCSV(){
-  const rows=[["رقم التذكرة","MRN","وقت الطباعة","وقت النداء","الشباك","مدة الانتظار (د)"]];
-  document.querySelectorAll("#reportTable tbody tr").forEach(tr=>{
-    const cols=[...tr.children].map(td=>td.innerText);
-    rows.push(cols);
+    if(d.waitMin !== ""){
+      totalWait += Number(d.waitMin);
+      waitCount++;
+    }
   });
-  const csv=rows.map(r=>r.join(",")).join("\n");
-  const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+
+  countInfo.textContent = `${rows.length} نتيجة`;
+  summaryCell.textContent = waitCount>0
+    ? `متوسط الانتظار: ${(totalWait/waitCount).toFixed(1)} دقيقة (${waitCount} تذكرة بحساب انتظار).`
+    : `لا توجد قيَم انتظار محسوبة ضمن النتائج.`;
+}
+
+/* ====== تصدير CSV ====== */
+function exportCsv(){
+  const rows=[];
+  document.querySelectorAll("#reportTable tbody tr").forEach(tr=>{
+    const tds = [...tr.children].map(td=>td.textContent.trim());
+    if (tds.length===6 && tds[0]!=="لا توجد بيانات ضمن نطاق التصفية المحدد"){
+      rows.push({
+        n: tds[0], mrn: tds[1], printedTs: tds[2], callTs: tds[3], win: tds[4], waitMin: tds[5]
+      });
+    }
+  });
+  if(rows.length===0){ alert("لا توجد نتائج لتصديرها."); return; }
+
+  // لو كانت الخلايا مُهيأة نصيًا، نعيد بناء CSV من صفوف الجدول
+  const header = ["Ticket","MRN","Printed At","Called At","Window","Waiting (min)"];
+  const esc = (v)=> `"${String(v??"").replace(/"/g,'""')}"`;
+  const lines=[header.map(esc).join(",")];
+  rows.forEach(r=>{
+    lines.push([r.n,r.mrn,r.printedTs,r.callTs,r.win,r.waitMin].map(esc).join(","));
+  });
+
+  const blob=new Blob([lines.join("\r\n")],{type:"text/csv;charset=utf-8;"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
-  a.href=url; a.download="Report.csv"; a.click();
-  URL.revokeObjectURL(url);
+  a.href=url;a.download=`Cardiac_Report_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
+
+/* ====== ربط الأزرار وتعيين التواريخ ====== */
+document.getElementById("btnLoad").onclick = loadReport;
+document.getElementById("btnExport").onclick = exportCsv;
+
+// افتراضي: اليوم
+(function setToday(){
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth()+1).padStart(2,"0");
+  const d = String(today.getDate()).padStart(2,"0");
+  document.getElementById("fromDate").value = `${y}-${m}-${d}`;
+  document.getElementById("toDate").value   = `${y}-${m}-${d}`;
+})();
 </script>
 </body>
 </html>
