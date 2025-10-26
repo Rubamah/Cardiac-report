@@ -21,13 +21,12 @@
   .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;color:var(--muted)}
   .stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
   .stat b{color:#fff}
-  button{border:1px solid var(--border);background:#0f1a2e;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer}
-  button.primary{background:var(--accent);border-color:#0e9e8f;color:#082c2a;font-weight:800}
   .filters{display:grid;gap:12px;grid-template-columns:repeat(12,1fr);align-items:end;margin-top:8px}
   .field{grid-column:span 3;background:var(--card);border:1px solid var(--border);padding:10px;border-radius:12px}
   .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
   .field input{width:100%;background:#0a1220;border:1px solid #23314f;color:var(--ink);padding:8px 10px;border-radius:8px;outline:none}
   .actions{grid-column:span 3;display:flex;gap:8px}
+  button{border:1px solid var(--border);background:#0f1a2e;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer}
   .grid{margin-top:14px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:auto}
   table{width:100%;border-collapse:collapse;min-width:900px}
   thead th{position:sticky;top:0;background:var(--head);color:#bcd0f7;font-weight:700;text-align:center;padding:12px;border-bottom:1px solid #203056}
@@ -38,372 +37,119 @@
   .pending{background:var(--pbg);color:var(--ptx);border:1px solid var(--pbd)}
   .danger{background:var(--dbg);color:var(--dtx);border:1px solid var(--dbd)}
   .foot{margin-top:10px;color:var(--muted);font-size:12px}
-  .err{margin-top:8px;color:#ffb3b3}
+  .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999}
+  .overlay input{padding:10px 14px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin-top:10px}
 </style>
 
-<!-- Firebase compat (مطابق لملفاتك الحالية) -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
-<header>
-  <h1>لوحة المتابعة اللحظية — Cardiac Pharmacy Tickets</h1>
-</header>
+<header><h1>لوحة المتابعة اللحظية — Cardiac Pharmacy Tickets</h1></header>
 
-<div class="wrap">
-  <!-- أزرار تغيير الجذر + إحصاءات -->
+<div id="overlay" class="overlay">
+  <h2>🔒 أدخل كلمة المرور</h2>
+  <input id="pw" type="password" placeholder="Password" />
+  <button onclick="checkPass()">دخول</button>
+  <p id="msg" style="color:#f88;margin-top:8px"></p>
+</div>
+
+<div id="main" class="wrap" style="display:none">
   <div class="bar">
-    <span>المسار:</span>
-    <button id="rootDemo" class="primary">cardiac_demo</button>
-    <button id="rootProd">cardiac</button>
-    <span id="rootLabel" class="stat">المسار الحالي: <b>cardiac_demo</b></span>
     <span class="stat">إجمالي التذاكر: <b id="statTotal">0</b></span>
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
     <span class="stat">المخدّمة: <b id="statServed">0</b></span>
     <span class="stat">قيد الانتظار: <b id="statWaiting">0</b></span>
-    <span id="err" class="err"></span>
   </div>
 
-  <!-- فلاتر -->
   <div class="filters">
-    <div class="field">
-      <label for="fMrn">بحث حسب MRN</label>
-      <input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" />
-    </div>
-    <div class="field">
-      <label for="fTicket">بحث حسب رقم التذكرة</label>
-      <input id="fTicket" placeholder="مثال: 87" inputmode="numeric" />
-    </div>
-    <div class="field">
-      <label for="fDate">التاريخ (حسب وقت الطباعة)</label>
-      <input id="fDate" type="date" />
-    </div>
+    <div class="field"><label>بحث حسب MRN</label><input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" /></div>
+    <div class="field"><label>بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
+    <div class="field"><label>التاريخ (حسب وقت الطباعة)</label><input id="fDate" type="date" /></div>
     <div class="actions">
       <button id="btnClear">مسح الفلاتر</button>
       <button id="btnExport">تصدير CSV</button>
     </div>
   </div>
 
-  <!-- الجدول -->
   <div class="grid">
     <table>
-      <thead>
-        <tr>
-          <th>Ticket</th>
-          <th>MRN</th>
-          <th>Printed Time</th>
-          <th>Served Time</th>
-          <th>Waiting Time</th>
-          <th>Status</th>
-        </tr>
-      </thead>
+      <thead><tr><th>Ticket</th><th>MRN</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th></tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
 
-  <div class="foot">
-    الحالة: <span class="badge ok">Served</span> / <span class="badge pending">Printed</span> / <span class="badge danger">No time</span>. التحديث لحظي.
-  </div>
+  <div class="foot">الحالة: <span class="badge ok">Served</span> / <span class="badge pending">Printed</span> / <span class="badge danger">No time</span>. التحديث لحظي.</div>
 </div>
 
 <script>
-/* ========= 1) Firebase Config (مشروعك) ========= */
-const firebaseConfig = {
-  apiKey: "AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",
-  authDomain: "q-matic-b7d77.firebaseapp.com",
-  databaseURL: "https://q-matic-b7d77-default-rtdb.firebaseio.com",
-  projectId: "q-matic-b7d77",
-  storageBucket: "q-matic-b7d77.appspot.com",
-  messagingSenderId: "908187704899",
-  appId: "1:908187704899:web:b8bcf33cda90bafe81bef6"
-};
-firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-
-/* ========= 2) اختيار الجذر ========= */
-let ROOT = 'cardiac_demo';
-const rootLabel = document.getElementById('rootLabel');
-document.getElementById('rootDemo').onclick = ()=> switchRoot('cardiac_demo');
-document.getElementById('rootProd').onclick = ()=> switchRoot('cardiac');
-function switchRoot(r){
-  ROOT = r;
-  rootLabel.innerHTML = `المسار الحالي: <b>${r}</b>`;
-  loadAll();
-}
-
-/* ========= 3) عناصر و أدوات ========= */
-const tbody = document.getElementById('tbody');
-const statTotal   = document.getElementById('statTotal');
-const statPrinted = document.getElementById('statPrinted');
-const statServed  = document.getElementById('statServed');
-const statWaiting = document.getElementById('statWaiting');
-const errBox = document.getElementById('err');
-
-const fMrn   = document.getElementById('fMrn');
-const fTk    = document.getElementById('fTicket');
-const fDate  = document.getElementById('fDate');
-document.getElementById('btnClear').onclick = ()=>{ fMrn.value=''; fTk.value=''; fDate.value=''; render(); };
-document.getElementById('btnExport').onclick = exportCSV;
-
-fMrn.addEventListener('input', render);
-fTk.addEventListener('input', render);
-fDate.addEventListener('change', render);
-
-const rows = new Map(); // key=ticket, value={ticket,mrn,printed,served,tPrinted,tServed}
-
-/* ========= 4) Utilities ========= */
-function zp(n){return n<10?('0'+n):(''+n);}
-function fmtISO(iso){
-  if(!iso) return '';
-  const d=new Date(iso); if(isNaN(d)) return '';
-  return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`;
-}
-function sameDate(iso, ymd){
-  if(!iso||!ymd) return true;
-  const d=new Date(iso); if(isNaN(d)) return false;
-  return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())}`===ymd;
-}
-function coerceTime(raw){
-  if(raw==null) return null;
-  if(typeof raw==='string'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
-  if(typeof raw==='number'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
-  if(typeof raw==='object' && raw.ts!=null){ const d=new Date(raw.ts); return isNaN(d)?null:d.toISOString(); }
-  return null;
-}
-function waitingMs(rec){
-  const start = rec.tPrinted ? new Date(rec.tPrinted).getTime() : NaN;
-  if(Number.isNaN(start)) return NaN;
-  const end = rec.tServed ? new Date(rec.tServed).getTime() : Date.now();
-  return Math.max(0, end - start);
-}
-function durFmt(ms){
-  if(Number.isNaN(ms)) return '';
-  const s=Math.floor(ms/1000);
-  return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
-}
-
-/* ========= 5) Load + Live listeners ========= */
-let refs = [];
-function detach(){ refs.forEach(r=> r.off && r.off()); refs=[]; }
-
-async function loadAll(){
-  detach();
-  rows.clear(); tbody.innerHTML=''; errBox.textContent='';
-
-  const rPrinted = db.ref(`${ROOT}/printed`);
-  const rServed  = db.ref(`${ROOT}/served`);
-  const rMrn     = db.ref(`${ROOT}/mrn`);
-  const rTickets = db.ref(`${ROOT}/tickets`);
-  const rTP      = db.ref(`${ROOT}/times/printed`);
-  const rTS      = db.ref(`${ROOT}/times/served`);
-  const rCalls   = db.ref(`${ROOT}/calls`);
-
-  try{
-    const [sp, ss, sm, stk, stp, sts, scalls] = await Promise.all([
-      rPrinted.get(), rServed.get(), rMrn.get(), rTickets.get(), rTP.get(), rTS.get(), rCalls.get()
-    ]);
-
-    // printed/{n}/ts  (وقد تكون true أو رقم ms)
-    if(sp.exists()){
-      const obj=sp.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        rec.printed = !!obj[t];
-        // وقت الطباعة من ts داخل printed
-        const iso = coerceTime(obj[t]); // يلتقط {ts} أو رقم
-        if(iso) rec.tPrinted = iso;
-        rows.set(t, rec);
-      });
-    }
-
-    // served/{n}=true
-    if(ss.exists()){
-      const obj=ss.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        rec.served = !!obj[t];
-        rows.set(t, rec);
-      });
-    }
-
-    // MRN: أولوية tickets/{n}/mrn ثم mrn/{n}
-    if(stk.exists()){
-      const obj=stk.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        if(obj[t] && obj[t].mrn!=null) rec.mrn = String(obj[t].mrn);
-        rows.set(t, rec);
-      });
-    }
-    if(sm.exists()){
-      const obj=sm.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        if(!rec.mrn && obj[t]!=null) rec.mrn = String(obj[t]);
-        rows.set(t, rec);
-      });
-    }
-
-    // times/printed/* (أولوية أعلى إن وُجد)
-    if(stp.exists()){
-      const obj=stp.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        const iso = coerceTime(obj[t]);
-        if(iso) rec.tPrinted = iso;
-        rows.set(t, rec);
-      });
-    }
-
-    // served time: calls/{n}/ts (أولوية أولى)
-    if(scalls.exists()){
-      const obj=scalls.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        const iso = coerceTime(obj[t]); // { ts, mrn, window... }
-        if(iso) rec.tServed = iso;
-        // لو فيه mrn داخل calls وخانة mrn فاضية خذيها
-        if(!rec.mrn && obj[t] && obj[t].mrn!=null) rec.mrn = String(obj[t].mrn);
-        rows.set(t, rec);
-      });
-    }
-    // fallback: times/served/*
-    if(sts.exists()){
-      const obj=sts.val();
-      Object.keys(obj).forEach(t=>{
-        const rec = rows.get(t) || { ticket:t, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-        if(!rec.tServed){
-          const iso = coerceTime(obj[t]);
-          if(iso) rec.tServed = iso;
-        }
-        rows.set(t, rec);
-      });
-    }
-
-    render();
-
-    // ===== مستمعين لحظيين =====
-    rPrinted.on('child_added',  c=> upsert(c.key, { printed: !!c.val(), tPrinted: coerceTime(c.val()) || rows.get(c.key)?.tPrinted || null }));
-    rPrinted.on('child_changed',c=> upsert(c.key, { printed: !!c.val(), tPrinted: coerceTime(c.val()) || rows.get(c.key)?.tPrinted || null }));
-
-    rServed.on('child_added',   c=> upsert(c.key, { served: !!c.val() }));
-    rServed.on('child_changed', c=> upsert(c.key, { served: !!c.val() }));
-
-    rTickets.on('child_added',  c=> upsert(c.key, { mrn: (c.val()&&c.val().mrn!=null)? String(c.val().mrn) : (rows.get(c.key)?.mrn || '') }));
-    rTickets.on('child_changed',c=> upsert(c.key, { mrn: (c.val()&&c.val().mrn!=null)? String(c.val().mrn) : (rows.get(c.key)?.mrn || '') }));
-
-    rMrn.on('child_added',      c=> upsert(c.key, { mrn: c.val()!=null ? String(c.val()) : (rows.get(c.key)?.mrn || '') }));
-    rMrn.on('child_changed',    c=> upsert(c.key, { mrn: c.val()!=null ? String(c.val()) : (rows.get(c.key)?.mrn || '') }));
-
-    rTP.on('child_added',       c=> upsert(c.key, { tPrinted: coerceTime(c.val()) || rows.get(c.key)?.tPrinted || null }));
-    rTP.on('child_changed',     c=> upsert(c.key, { tPrinted: coerceTime(c.val()) || rows.get(c.key)?.tPrinted || null }));
-
-    rTS.on('child_added',       c=> { if(!rows.get(c.key)?.tServed) upsert(c.key, { tServed: coerceTime(c.val()) || null }); });
-    rTS.on('child_changed',     c=> { if(!rows.get(c.key)?.tServed) upsert(c.key, { tServed: coerceTime(c.val()) || null }); });
-
-    rCalls.on('child_added',    c=> upsert(c.key, { tServed: coerceTime(c.val()) || rows.get(c.key)?.tServed || null, mrn: (c.val()&&c.val().mrn!=null)? String(c.val().mrn) : (rows.get(c.key)?.mrn || '') }));
-    rCalls.on('child_changed',  c=> upsert(c.key, { tServed: coerceTime(c.val()) || rows.get(c.key)?.tServed || null, mrn: (c.val()&&c.val().mrn!=null)? String(c.val().mrn) : (rows.get(c.key)?.mrn || '') }));
-
-    refs.push(rPrinted,rServed,rMrn,rTickets,rTP,rTS,rCalls);
-  }catch(e){
-    errBox.textContent = (e && (e.message||e.code)) || 'Firebase error';
-    console.error(e);
+function checkPass(){
+  const input = document.getElementById('pw').value.trim();
+  if(input === 'PhReport'){
+    document.getElementById('overlay').remove();
+    document.getElementById('main').style.display='block';
+    startApp();
+  }else{
+    document.getElementById('msg').textContent = '❌ كلمة المرور غير صحيحة';
   }
 }
 
-function upsert(ticket, patch){
-  const rec = rows.get(ticket) || { ticket, mrn:'', printed:false, served:false, tPrinted:null, tServed:null };
-  Object.assign(rec, patch);
-  rows.set(ticket, rec);
-  render();
+function startApp(){
+  const cfg={apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",authDomain:"q-matic-b7d77.firebaseapp.com",databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",projectId:"q-matic-b7d77",storageBucket:"q-matic-b7d77.appspot.com",messagingSenderId:"908187704899",appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"};
+  firebase.initializeApp(cfg);
+  const db=firebase.database();
+  const ROOT="cardiac_demo";
+
+  const tbody=document.getElementById("tbody");
+  const fMrn=document.getElementById("fMrn");
+  const fTk=document.getElementById("fTicket");
+  const fDate=document.getElementById("fDate");
+  const statTotal=document.getElementById("statTotal");
+  const statPrinted=document.getElementById("statPrinted");
+  const statServed=document.getElementById("statServed");
+  const statWaiting=document.getElementById("statWaiting");
+
+  const rows=new Map();
+  function zp(n){return n<10?'0'+n:n;}
+  function fmt(d){return new Date(d).toLocaleString('sv').replace('T',' ');}
+  function sameDate(a,b){if(!a||!b)return true;const d=new Date(a);return d.toISOString().slice(0,10)===b;}
+  function coerce(x){if(!x)return null;if(typeof x==='number')return new Date(x).toISOString();if(x.ts)return new Date(x.ts).toISOString();return null;}
+  function validServed(r){if(!r.tPrinted||!r.tServed)return false;return new Date(r.tServed)>=new Date(r.tPrinted);}
+  function wTime(r){const p=r.tPrinted?new Date(r.tPrinted).getTime():NaN;const s=validServed(r)?new Date(r.tServed).getTime():Date.now();return Math.max(0,s-p);}
+  function fmtDur(ms){const s=Math.floor(ms/1000);return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;}
+
+  function render(){
+    const fmrn=fMrn.value.trim();const ft=fTk.value.trim();const fd=fDate.value;
+    const arr=[...rows.values()].filter(r=>{
+      if(fmrn && r.mrn && !r.mrn.includes(fmrn))return false;
+      if(ft && r.ticket!=ft)return false;
+      if(fd && r.tPrinted && !sameDate(r.tPrinted,fd))return false;
+      return true;
+    });
+    arr.sort((a,b)=>(a.ticket-b.ticket));
+    tbody.innerHTML=arr.map(r=>{
+      const served=!!r.served||validServed(r);
+      const printed=!!r.printed||!!r.tPrinted;
+      const status=served?'Served':printed?'Printed':'No time';
+      const badge=served?'ok':printed?'pending':'danger';
+      const wt=fmtDur(wTime(r));
+      return `<tr><td>${r.ticket}</td><td>${r.mrn||''}</td><td>${r.tPrinted?fmt(r.tPrinted):''}</td><td>${r.tServed?fmt(r.tServed):''}</td><td>${wt}</td><td><span class="badge ${badge}">${status}</span></td></tr>`;
+    }).join('');
+    statTotal.textContent=arr.length;
+    statPrinted.textContent=arr.filter(r=>r.printed||r.tPrinted).length;
+    statServed.textContent=arr.filter(r=>!!r.served||validServed(r)).length;
+    statWaiting.textContent=arr.filter(r=>{
+      const p=r.printed||r.tPrinted;const s=!!r.served||validServed(r);return p&&!s;
+    }).length;
+  }
+
+  function upsert(id,chg){rows.set(id,{...rows.get(id)||{ticket:id},...chg});render();}
+
+  db.ref(`${ROOT}/tickets`).on('value',s=>{s.forEach(c=>upsert(c.key,{mrn:c.val().mrn||''}));});
+  db.ref(`${ROOT}/printed`).on('value',s=>{s.forEach(c=>upsert(c.key,{printed:true,tPrinted:coerce(c.val())}));});
+  db.ref(`${ROOT}/served`).on('value',s=>{s.forEach(c=>upsert(c.key,{served:true}));});
+  db.ref(`${ROOT}/calls`).on('value',s=>{s.forEach(c=>upsert(c.key,{tServed:coerce(c.val())}));});
 }
-
-/* ========= 6) Render ========= */
-function render(){
-  const mrnF = fMrn.value.trim();
-  const tkF  = fTk.value.trim();
-  const dateF= fDate.value;
-
-  const arr = Array.from(rows.values()).sort((a,b)=> Number(a.ticket)-Number(b.ticket));
-
-  let printedCount=0, servedCount=0, waitingCount=0;
-
-  const filtered = arr.filter(rec=>{
-    const wasPrinted = rec.printed || !!rec.tPrinted;
-    const wasServed  = rec.served  || !!rec.tServed;
-
-    if(wasPrinted) printedCount++;
-    if(wasServed)  servedCount++;
-    if(wasPrinted && !wasServed) waitingCount++;
-
-    const passMrn = !mrnF || String(rec.mrn||'').includes(mrnF);
-    const passTk  = !tkF  || String(rec.ticket).includes(tkF);
-    const passDt  = !dateF || (rec.tPrinted && sameDate(rec.tPrinted, dateF));
-    return passMrn && passTk && passDt;
-  });
-
-  const html = filtered.map(rec=>{
-    const wasPrinted = rec.printed || !!rec.tPrinted;
-    const wasServed  = rec.served  || !!rec.tServed;
-
-    const wms = waitingMs(rec);
-    const status = wasServed ? 'Served' : (wasPrinted ? 'Printed' : 'No time');
-    const badge  = wasServed ? 'ok'     : (wasPrinted ? 'pending' : 'danger');
-
-    return `<tr data-ticket="${rec.ticket}">
-      <td><b>#${rec.ticket}</b></td>
-      <td>${rec.mrn||''}</td>
-      <td>${fmtISO(rec.tPrinted)}</td>
-      <td>${fmtISO(rec.tServed)}</td>
-      <td data-wait="${wms}">${durFmt(wms)}</td>
-      <td><span class="badge ${badge}">${status}</span></td>
-    </tr>`;
-  }).join('');
-
-  tbody.innerHTML = html;
-
-  // الإجماليات (على كل البيانات، مو المفلترة)
-  statTotal.textContent   = arr.length;
-  statPrinted.textContent = arr.filter(r=> r.printed || !!r.tPrinted).length;
-  statServed.textContent  = arr.filter(r=> r.served  || !!r.tServed ).length;
-  statWaiting.textContent = arr.filter(r=>{
-    const wasPrinted = r.printed || !!r.tPrinted;
-    const wasServed  = r.served  || !!r.tServed;
-    return wasPrinted && !wasServed;
-  }).length;
-}
-
-// تحديث مدة الانتظار كل ثانية
-setInterval(()=>{
-  Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
-    const t = tr.getAttribute('data-ticket');
-    const rec = rows.get(t);
-    if(rec){
-      const ms = waitingMs(rec);
-      const td = tr.querySelector('td[data-wait]');
-      if(td){
-        td.setAttribute('data-wait', ms);
-        td.textContent = durFmt(ms);
-      }
-    }
-  });
-}, 1000);
-
-/* ========= 7) CSV ========= */
-function exportCSV(){
-  const headers = ['Ticket','MRN','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
-  const out=[headers.join(',')];
-  Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
-    const vals = Array.from(tr.children).map(td=> td.innerText.trim());
-    out.push(vals.map(x=> `"${x.replace(/"/g,'""')}"`).join(','));
-  });
-  const name = `cardiac_dashboard_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
-  const blob = new Blob([out.join('\n')], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove();
-}
-
-/* ========= 8) انطلاق ========= */
-loadAll();
 </script>
 </body>
 </html>
