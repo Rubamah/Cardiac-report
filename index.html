@@ -37,24 +37,30 @@
   .pending{background:var(--pbg);color:var(--ptx);border:1px solid var(--pbd)}
   .danger{background:var(--dbg);color:var(--dtx);border:1px solid var(--dbd)}
   .foot{margin-top:10px;color:var(--muted);font-size:12px}
-  .overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999}
-  .overlay input{padding:10px 14px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin-top:10px}
+  /* Password overlay */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff}
+  .overlay input{padding:12px 16px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin:10px 0;width:min(280px,80vw)}
+  .overlay button{background:#2563eb;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer}
+  .overlay .msg{color:#f99;margin-top:6px;min-height:1.2em}
 </style>
 
+<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
 <header><h1>لوحة المتابعة اللحظية — Cardiac Pharmacy Tickets</h1></header>
 
-<div id="overlay" class="overlay">
+<!-- PASSWORD GATE (يُطلب عند فتح التبويب لأول مرة فقط؛ الرفرش لا) -->
+<div id="gate" class="overlay" style="display:none">
   <h2>🔒 أدخل كلمة المرور</h2>
   <input id="pw" type="password" placeholder="Password" />
-  <button onclick="checkPass()">دخول</button>
-  <p id="msg" style="color:#f88;margin-top:8px"></p>
+  <button id="goBtn">دخول</button>
+  <div id="pwMsg" class="msg"></div>
 </div>
 
-<div id="main" class="wrap" style="display:none">
+<div id="app" class="wrap" style="display:none">
+  <!-- إحصاءات مرتبطة بالفلاتر (خصوصًا التاريخ) -->
   <div class="bar">
     <span class="stat">إجمالي التذاكر: <b id="statTotal">0</b></span>
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
@@ -62,19 +68,32 @@
     <span class="stat">قيد الانتظار: <b id="statWaiting">0</b></span>
   </div>
 
+  <!-- فلاتر -->
   <div class="filters">
-    <div class="field"><label>بحث حسب MRN</label><input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" /></div>
-    <div class="field"><label>بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
-    <div class="field"><label>التاريخ (حسب وقت الطباعة)</label><input id="fDate" type="date" /></div>
+    <div class="field">
+      <label for="fMrn">بحث حسب MRN</label>
+      <input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" />
+    </div>
+    <div class="field">
+      <label for="fTicket">بحث حسب رقم التذكرة</label>
+      <input id="fTicket" placeholder="مثال: 87" inputmode="numeric" />
+    </div>
+    <div class="field">
+      <label for="fDate">التاريخ (حسب وقت الطباعة)</label>
+      <input id="fDate" type="date" />
+    </div>
     <div class="actions">
       <button id="btnClear">مسح الفلاتر</button>
       <button id="btnExport">تصدير CSV</button>
     </div>
   </div>
 
+  <!-- الجدول -->
   <div class="grid">
     <table>
-      <thead><tr><th>Ticket</th><th>MRN</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th></tr></thead>
+      <thead><tr>
+        <th>Ticket</th><th>MRN</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
+      </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -83,72 +102,198 @@
 </div>
 
 <script>
-function checkPass(){
-  const input = document.getElementById('pw').value.trim();
-  if(input === 'PhReport'){
-    document.getElementById('overlay').remove();
-    document.getElementById('main').style.display='block';
-    startApp();
-  }else{
-    document.getElementById('msg').textContent = '❌ كلمة المرور غير صحيحة';
-  }
-}
+/* ========= Password gate =========
+   - نخزن success في sessionStorage → ينجو مع refresh
+   - ينمسح تلقائيًا عند إغلاق التبويب → يطلب باس مجددًا
+*/
+const PASS_KEY = 'phReportOK';
+const PASS_VAL = '1';
+const PASSWORD = 'PhReport';
 
+(function gate(){
+  const ok = sessionStorage.getItem(PASS_KEY) === PASS_VAL;
+  const gateEl = document.getElementById('gate');
+  const appEl  = document.getElementById('app');
+
+  if (!ok) {
+    gateEl.style.display = 'flex';
+    appEl.style.display = 'none';
+    document.getElementById('goBtn').onclick = ()=>{
+      const v = (document.getElementById('pw').value || '').trim();
+      const msg = document.getElementById('pwMsg');
+      if (v === PASSWORD) {
+        sessionStorage.setItem(PASS_KEY, PASS_VAL);
+        gateEl.remove();
+        appEl.style.display = 'block';
+        startApp();
+      } else {
+        msg.textContent = '❌ كلمة المرور غير صحيحة';
+      }
+    };
+  } else {
+    gateEl.remove();
+    appEl.style.display = 'block';
+    startApp();
+  }
+})();
+
+/* ========= التطبيق ========= */
 function startApp(){
+  // 1) Firebase
   const cfg={apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",authDomain:"q-matic-b7d77.firebaseapp.com",databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",projectId:"q-matic-b7d77",storageBucket:"q-matic-b7d77.appspot.com",messagingSenderId:"908187704899",appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"};
   firebase.initializeApp(cfg);
   const db=firebase.database();
-  const ROOT="cardiac_demo";
+  const ROOT="cardiac_demo"; // ثابت
 
-  const tbody=document.getElementById("tbody");
-  const fMrn=document.getElementById("fMrn");
-  const fTk=document.getElementById("fTicket");
-  const fDate=document.getElementById("fDate");
-  const statTotal=document.getElementById("statTotal");
-  const statPrinted=document.getElementById("statPrinted");
-  const statServed=document.getElementById("statServed");
-  const statWaiting=document.getElementById("statWaiting");
+  // 2) عناصر
+  const tbody = document.getElementById('tbody');
+  const statTotal=document.getElementById('statTotal');
+  const statPrinted=document.getElementById('statPrinted');
+  const statServed=document.getElementById('statServed');
+  const statWaiting=document.getElementById('statWaiting');
 
-  const rows=new Map();
-  function zp(n){return n<10?'0'+n:n;}
-  function fmt(d){return new Date(d).toLocaleString('sv').replace('T',' ');}
-  function sameDate(a,b){if(!a||!b)return true;const d=new Date(a);return d.toISOString().slice(0,10)===b;}
-  function coerce(x){if(!x)return null;if(typeof x==='number')return new Date(x).toISOString();if(x.ts)return new Date(x.ts).toISOString();return null;}
-  function validServed(r){if(!r.tPrinted||!r.tServed)return false;return new Date(r.tServed)>=new Date(r.tPrinted);}
-  function wTime(r){const p=r.tPrinted?new Date(r.tPrinted).getTime():NaN;const s=validServed(r)?new Date(r.tServed).getTime():Date.now();return Math.max(0,s-p);}
-  function fmtDur(ms){const s=Math.floor(ms/1000);return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;}
+  const fMrn=document.getElementById('fMrn');
+  const fTk=document.getElementById('fTicket');
+  const fDate=document.getElementById('fDate');
+  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); render(); };
+  document.getElementById('btnExport').onclick=exportCSV;
+  fMrn.addEventListener('input', render);
+  fTk.addEventListener('input', render);
+  fDate.addEventListener('change', render);
 
+  // 3) التاريخ الافتراضي = اليوم
+  function setToday(){
+    const now=new Date(); const y=now.getFullYear();
+    const m=String(now.getMonth()+1).padStart(2,'0');
+    const d=String(now.getDate()).padStart(2,'0');
+    fDate.value=`${y}-${m}-${d}`;
+  }
+  setToday();
+
+  // 4) Utilities
+  const rows=new Map(); // key=ticket
+  function zp(n){return n<10?('0'+n):(''+n);}
+  function fmt(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`; }
+  function sameDate(iso,ymd){ if(!iso||!ymd) return true; const d=new Date(iso); if(isNaN(d)) return false; return d.toISOString().slice(0,10)===ymd; }
+  function coerce(raw){
+    if(raw==null) return null;
+    if(typeof raw==='string'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
+    if(typeof raw==='number'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
+    if(typeof raw==='object' && raw.ts!=null){ const d=new Date(raw.ts); return isNaN(d)?null:d.toISOString(); }
+    return null;
+  }
+  function isValidServed(rec){
+    if(!rec.tServed || !rec.tPrinted) return false;
+    const s=new Date(rec.tServed).getTime(), p=new Date(rec.tPrinted).getTime();
+    return !Number.isNaN(s) && !Number.isNaN(p) && s>=p;
+  }
+  function waitingMs(rec){
+    const p = rec.tPrinted ? new Date(rec.tPrinted).getTime() : NaN;
+    const end = isValidServed(rec) ? new Date(rec.tServed).getTime() : Date.now();
+    return Number.isNaN(p) ? NaN : Math.max(0,end-p);
+  }
+  function dur(ms){
+    if(Number.isNaN(ms)) return '';
+    const s=Math.floor(ms/1000);
+    return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
+  }
+  function upsert(id,patch){
+    const base = rows.get(id) || {ticket:id, mrn:'', printed:false, served:false, tPrinted:null, tServed:null};
+    rows.set(id, Object.assign(base, patch));
+    render();
+  }
+
+  // 5) التحميل + المستمعين
+  const rTickets=db.ref(`${ROOT}/tickets`);
+  const rPrinted=db.ref(`${ROOT}/printed`);
+  const rServed =db.ref(`${ROOT}/served`);
+  const rTP     =db.ref(`${ROOT}/times/printed`);
+  const rTS     =db.ref(`${ROOT}/times/served`);
+  const rCalls  =db.ref(`${ROOT}/calls`);
+
+  // قاعدة ذهبية: لا ننشئ صفًا إلا من printed فقط
+  rPrinted.on('child_added',  c=> upsert(c.key, { printed: !!c.val(), tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+  rPrinted.on('child_changed',c=> upsert(c.key, { printed: !!c.val(), tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+
+  // تحديث وقت الطباعة من times/printed (أولوية أعلى)
+  rTP.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+  rTP.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+
+  // لا تنشئ سجل من served/calls/tickets إذا ما كان مطبوع
+  rServed.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ served: !!c.val() }); });
+  rServed.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ served: !!c.val() }); });
+
+  rCalls.on('child_added',    c=> { if(rows.has(c.key)) upsert(c.key,{ tServed: coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+  rCalls.on('child_changed',  c=> { if(rows.has(c.key)) upsert(c.key,{ tServed: coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+
+  rTS.on('child_added',       c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed: coerce(c.val()) || null }); });
+  rTS.on('child_changed',     c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed: coerce(c.val()) || null }); });
+
+  rTickets.on('child_added',  c=> { if(rows.has(c.key)) upsert(c.key,{ mrn: (c.val()&&c.val().mrn!=null)? String(c.val().mrn) : (rows.get(c.key)?.mrn||'') }); });
+  rTickets.on('child_changed',c=> { if(rows.has(c.key)) upsert(c.key,{ mrn: (c.val()&&c.val().mrn!=null)? String(c.val().mrn) : (rows.get(c.key)?.mrn||'') }); });
+
+  // 6) Render + إحصاءات حسب الفلاتر (خاصة التاريخ)
   function render(){
-    const fmrn=fMrn.value.trim();const ft=fTk.value.trim();const fd=fDate.value;
-    const arr=[...rows.values()].filter(r=>{
-      if(fmrn && r.mrn && !r.mrn.includes(fmrn))return false;
-      if(ft && r.ticket!=ft)return false;
-      if(fd && r.tPrinted && !sameDate(r.tPrinted,fd))return false;
+    const mrnF=fMrn.value.trim();
+    const tkF=fTk.value.trim();
+    const dateF=fDate.value;
+
+    // فلترة حسب: وجود طباعة + التاريخ على tPrinted + باقي الفلاتر
+    const base = [...rows.values()].filter(r=>{
+      const isPrinted = r.printed || !!r.tPrinted;
+      if(!isPrinted) return false; // لا يُعرض غير المطبوعة
+      if(dateF && r.tPrinted && !sameDate(r.tPrinted, dateF)) return false;
+      if(mrnF && (!r.mrn || !String(r.mrn).includes(mrnF))) return false;
+      if(tkF && String(r.ticket)!==String(tkF)) return false;
       return true;
-    });
-    arr.sort((a,b)=>(a.ticket-b.ticket));
-    tbody.innerHTML=arr.map(r=>{
-      const served=!!r.served||validServed(r);
-      const printed=!!r.printed||!!r.tPrinted;
-      const status=served?'Served':printed?'Printed':'No time';
-      const badge=served?'ok':printed?'pending':'danger';
-      const wt=fmtDur(wTime(r));
-      return `<tr><td>${r.ticket}</td><td>${r.mrn||''}</td><td>${r.tPrinted?fmt(r.tPrinted):''}</td><td>${r.tServed?fmt(r.tServed):''}</td><td>${wt}</td><td><span class="badge ${badge}">${status}</span></td></tr>`;
+    }).sort((a,b)=> Number(a.ticket)-Number(b.ticket));
+
+    // جدول
+    tbody.innerHTML = base.map(r=>{
+      const served = (!!r.served) || isValidServed(r);
+      const printed = (!!r.printed) || !!r.tPrinted;
+      const status = served ? 'Served' : (printed ? 'Printed' : 'No time');
+      const badge  = served ? 'ok'     : (printed ? 'pending' : 'danger');
+      const wt = dur( waitingMs(r) );
+      return `<tr>
+        <td><b>#${r.ticket}</b></td>
+        <td>${r.mrn||''}</td>
+        <td>${fmt(r.tPrinted)}</td>
+        <td>${fmt(r.tServed)}</td>
+        <td>${wt}</td>
+        <td><span class="badge ${badge}">${status}</span></td>
+      </tr>`;
     }).join('');
-    statTotal.textContent=arr.length;
-    statPrinted.textContent=arr.filter(r=>r.printed||r.tPrinted).length;
-    statServed.textContent=arr.filter(r=>!!r.served||validServed(r)).length;
-    statWaiting.textContent=arr.filter(r=>{
-      const p=r.printed||r.tPrinted;const s=!!r.served||validServed(r);return p&&!s;
+
+    // إحصاءات (على قاعدة الفلترة الحالية فقط)
+    statTotal.textContent   = base.length;
+    statPrinted.textContent = base.filter(r=> (r.printed || !!r.tPrinted)).length;
+    statServed.textContent  = base.filter(r=> (!!r.served) || isValidServed(r)).length;
+    statWaiting.textContent = base.filter(r=>{
+      const p=(r.printed||!!r.tPrinted), s=(!!r.served)||isValidServed(r);
+      return p && !s;
     }).length;
   }
 
-  function upsert(id,chg){rows.set(id,{...rows.get(id)||{ticket:id},...chg});render();}
+  // تحديث مدة الانتظار كل ثانية على المعروض فقط
+  setInterval(()=>{
+    // أعد الرندر السريع لتحديث الـ WT (خفيف وعدد صفوف محدود)
+    render();
+  }, 1000);
 
-  db.ref(`${ROOT}/tickets`).on('value',s=>{s.forEach(c=>upsert(c.key,{mrn:c.val().mrn||''}));});
-  db.ref(`${ROOT}/printed`).on('value',s=>{s.forEach(c=>upsert(c.key,{printed:true,tPrinted:coerce(c.val())}));});
-  db.ref(`${ROOT}/served`).on('value',s=>{s.forEach(c=>upsert(c.key,{served:true}));});
-  db.ref(`${ROOT}/calls`).on('value',s=>{s.forEach(c=>upsert(c.key,{tServed:coerce(c.val())}));});
+  // تصدير CSV (على البيانات المعروضة حاليًا فقط)
+  function exportCSV(){
+    const headers = ['Ticket','MRN','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
+    const rowsEls = Array.from(tbody.querySelectorAll('tr'));
+    const out = [headers.join(',')];
+    rowsEls.forEach(tr=>{
+      const vals = Array.from(tr.children).map(td=> td.innerText.trim());
+      out.push(vals.map(x=> `"${x.replace(/"/g,'""')}"`).join(','));
+    });
+    const name = `cardiac_dashboard_${(document.getElementById('fDate').value||'all')}.csv`;
+    const blob = new Blob([out.join('\n')], {type:'text/csv;charset=utf-8;'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  }
 }
 </script>
 </body>
