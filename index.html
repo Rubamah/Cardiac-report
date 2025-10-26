@@ -268,30 +268,18 @@ const rows = await Promise.all(tickets.map(async (n) => {
 }));
 
 const finalRows = rows.filter(Boolean);
-    const waitMin = (typeof callTs === "number" && typeof printedTs === "number")
-      ? ((callTs - printedTs)/60000).toFixed(1)
-      : "";
 
-    rows.push({
-      n,
-      mrn: mrn || "",
-      printedTs: (typeof printedTs === "number") ? printedTs : "",
-      callTs:    (typeof callTs === "number") ? callTs : "",
-      win:       win || "",
-      waitMin
-    });
-  }
 
   tbody.innerHTML="";
-  if (rows.length===0){
+if (finalRows.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" class="muted">لا توجد بيانات ضمن نطاق التصفية المحدد</td></tr>`;
-    countInfo.textContent = "0 نتيجة";
+   countInfo.textContent = `${finalRows.length} نتيجة`;
     summaryCell.textContent = "";
     return;
   }
 
   let totalWait=0, waitCount=0;
-  rows.forEach(d=>{
+ finalRows.forEach(d => {
     const tr=document.createElement("tr");
     tr.innerHTML = `
       <td>${d.n}</td>
@@ -309,7 +297,7 @@ const finalRows = rows.filter(Boolean);
     }
   });
 
-  countInfo.textContent = `${rows.length} نتيجة`;
+countInfo.textContent = `${finalRows.length} نتيجة`;
   summaryCell.textContent = waitCount>0
     ? `متوسط الانتظار: ${(totalWait/waitCount).toFixed(1)} دقيقة (${waitCount} تذكرة بحساب انتظار).`
     : `لا توجد قيَم انتظار محسوبة ضمن النتائج.`;
