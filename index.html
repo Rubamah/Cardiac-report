@@ -176,16 +176,35 @@ function startApp(){
     const s=Math.floor(ms/1000);
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
+
+  /* ===== Sticky merge: تحديث حي بدون نزول حالة أو حذف ===== */
+  function isEmpty(v){ return v===undefined || v===null || v===false || v==='' }
+  function mergeSticky(rec, patch){
+    // لا نسمح بتصفير printed/served بعد رفعها
+    if (!isEmpty(patch.printed) && patch.printed===true) rec.printed = true;
+    if (!isEmpty(patch.served)  && patch.served ===true) rec.served  = true;
+
+    // أول طابع طباعة فقط
+    if (!isEmpty(patch.tPrinted) && !rec.tPrinted) rec.tPrinted = patch.tPrinted;
+
+    // أول طابع خدمة صالح فقط (بعد الطباعة)
+    if (!isEmpty(patch.tServed) && !rec.tServed) {
+      const tmp = { tPrinted: rec.tPrinted || patch.tPrinted || null, tServed: patch.tServed };
+      if (isValidServed(tmp)) rec.tServed = patch.tServed;
+    }
+
+    // MRN أول قيمة غير فاضية فقط
+    if (!isEmpty(patch.mrn) && !rec.mrn) rec.mrn = String(patch.mrn);
+    return rec;
+  }
   function upsert(id,patch){
     const rec = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
-    Object.assign(rec, patch);
-    // تنظيف: لا نحتفظ بختم خدمة غير صالح (يظهر فاضي)
-    if(!isValidServed(rec)) rec.tServed = null;
+    mergeSticky(rec, patch);
     rows.set(id, rec);
     render();
   }
 
-  // 5) التحميل/المستمعين — قاعدة: لا ننشئ صفًا إلا من printed
+  // 5) التحميل/المستمعين — لا ننشئ صفًا إلا من printed، ونرفض أي تخفيض/حذف
   const rPrinted=db.ref(`${ROOT}/printed`);
   const rTP=db.ref(`${ROOT}/times/printed`);
   const rServed=db.ref(`${ROOT}/served`);
@@ -193,23 +212,68 @@ function startApp(){
   const rCalls=db.ref(`${ROOT}/calls`);
   const rTickets=db.ref(`${ROOT}/tickets`);
 
-  rPrinted.on('child_added',  c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
-  rPrinted.on('child_changed',c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+  // printed: لا صف بدون طباعة. نتجاهل أي تغيير فارغ/false
+  rPrinted.on('child_added', (c)=>{
+    const tp = coerce(c.val());
+    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
+  });
+  rPrinted.on('child_changed', (c)=>{
+    const tp = coerce(c.val());
+    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
+    // لو tp فاضي/غير صالح → نتجاهل (لا ننزل الحالة)
+  });
 
-  rTP.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
-  rTP.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+  // times/printed: نثبّت أول طابع فقط
+  rTP.on('child_added', (c)=>{
+    const tp = coerce(c.val());
+    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
+  });
+  rTP.on('child_changed', (c)=>{
+    const tp = coerce(c.val());
+    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
+  });
 
-  rServed.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
-  rServed.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
+  // served: نرفع لـ true فقط، ونتجاهل false/null
+  rServed.on('child_added', (c)=>{
+    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
+  });
+  rServed.on('child_changed', (c)=>{
+    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
+  });
 
-  rCalls.on('child_added',    c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
-  rCalls.on('child_changed',  c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+  // calls: نأخذ أول طابع خدمة صالح فقط
+  rCalls.on('child_added', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
+  rCalls.on('child_changed', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
 
-  rTS.on('child_added',       c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
-  rTS.on('child_changed',     c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
+  // times/served: نفس الشيء (أول قيمة صالحة فقط)
+  rTS.on('child_added', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
+  rTS.on('child_changed', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
 
-  rTickets.on('child_added',  c=> { if(rows.has(c.key)) upsert(c.key,{ mrn:(c.val()&&c.val().mrn!=null)? String(c.val().mrn):(rows.get(c.key)?.mrn||'') }); });
-  rTickets.on('child_changed',c=> { if(rows.has(c.key)) upsert(c.key,{ mrn:(c.val()&&c.val().mrn!=null)? String(c.val().mrn):(rows.get(c.key)?.mrn||'') }); });
+  // tickets (MRN): نثبّت أول MRN فقط ولا ننزل لقيمة فاضية
+  rTickets.on('child_added', (c)=>{
+    if (!rows.has(c.key)) return;
+    const v = c.val();
+    const m = (v && v.mrn!=null) ? String(v.mrn) : '';
+    if (m) upsert(c.key, { mrn:m });
+  });
+  rTickets.on('child_changed', (c)=>{
+    if (!rows.has(c.key)) return;
+    const v = c.val();
+    const m = (v && v.mrn!=null) ? String(v.mrn) : '';
+    if (m) upsert(c.key, { mrn:m });
+  });
 
   // 6) Render حسب التاريخ والفلترة، وحالة Served منطقية
   function render(){
