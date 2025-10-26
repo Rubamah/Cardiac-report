@@ -233,7 +233,6 @@ async function loadReport(){
   const printedObj = printedSnap.val() || {};
   const tickets = Object.keys(printedObj).sort((a,b)=>Number(a)-Number(b));
 
-  const rows = [];
 const rows = await Promise.all(tickets.map(async (n) => {
   if (filterT && n !== filterT) return null;
 
