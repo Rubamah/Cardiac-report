@@ -33,10 +33,11 @@
   tbody td{padding:10px 8px;border-bottom:1px solid #16213a;text-align:center;font-variant-numeric:tabular-nums}
   tr:hover td{background:#0e172a80}
   .badge{display:inline-block;padding:.2em .55em;border-radius:.6em;font-size:.85em}
-  .ok{background:var(--okbg);color:var(--oktx);border:1px solid --okbd}
+  .ok{background:var(--okbg);color:var(--oktx);border:1px solid var(--okbd)}
   .pending{background:var(--pbg);color:var(--ptx);border:1px solid var(--pbd)}
   .danger{background:var(--dbg);color:var(--dtx);border:1px solid var(--dbd)}
   .foot{margin-top:10px;color:var(--muted);font-size:12px}
+  /* Password overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff}
   .overlay input{padding:12px 16px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin:10px 0;width:min(280px,80vw)}
   .overlay button{background:#2563eb;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer}
@@ -124,11 +125,11 @@ function startApp(){
   const fMrn=document.getElementById('fMrn');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
-  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); seedFromCache(); render(); };
+  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); render(); };
   document.getElementById('btnExport').onclick=exportCSV;
   fMrn.addEventListener('input', render);
   fTk.addEventListener('input', render);
-  fDate.addEventListener('change', ()=>{ seedFromCache(); render(); });
+  fDate.addEventListener('change', render);
 
   // 3) التاريخ الافتراضي = اليوم
   function setToday(){
@@ -144,12 +145,13 @@ function startApp(){
   function zp(n){return n<10?('0'+n):(''+n);}
   function fmt(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`; }
 
-  // ✅ التاريخ محليًا
+  // ✅ تعديل: مطابقة التاريخ "محليًا" وليس UTC
   function sameDate(iso, ymd){
     if(!iso || !ymd) return true;
     const d = new Date(iso);
     if(isNaN(d)) return false;
-    const localYmd = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    const localYmd = new Date(d.getTime() - d.getTimezoneOffset()*60000)
+                      .toISOString().slice(0,10);
     return localYmd === ymd;
   }
 
@@ -184,37 +186,7 @@ function startApp(){
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
 
-  /* ===== Sticky cache (per-day) ===== */
-  const CACHE_PREFIX='cardiac_report_';
-  const cacheKey = day => `${CACHE_PREFIX}${day}`;
-  const loadDayCache = day => { try{ return JSON.parse(localStorage.getItem(cacheKey(day))||'{}'); }catch{ return {}; } };
-  const saveDayCache = (day,data)=>{ try{ localStorage.setItem(cacheKey(day), JSON.stringify(data)); }catch{} };
-  function recordDay(rec){
-    if(!rec.tPrinted) return null;
-    // خذ تاريخ الطباعة محليًا (YYYY-MM-DD)
-    const d = new Date(new Date(rec.tPrinted).getTime() - new Date().getTimezoneOffset()*60000)
-                .toISOString().slice(0,10);
-    return d;
-  }
-  function seedFromCache(){
-    const day = fDate.value;
-    const cache = loadDayCache(day);
-    Object.values(cache).forEach(r=>{
-      const id = String(r.ticket);
-      const cur = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
-      // sticky merge من الكاش فقط للي ناقص
-      if(r.printed) cur.printed = true;
-      if(r.tPrinted && !cur.tPrinted) cur.tPrinted = r.tPrinted;
-      if(r.served) cur.served = true;
-      if(r.tServed && !cur.tServed) cur.tServed = r.tServed;
-      if(r.mrn && !cur.mrn) cur.mrn = r.mrn;
-      rows.set(id, cur);
-    });
-  }
-  // زرع أولي للكاش لليوم الحالي
-  seedFromCache();
-
-  /* ===== Sticky merge: تحديث حي بدون نزول حالة أو حذف + حفظ للكاش ===== */
+  /* ===== Sticky merge: تحديث حي بدون نزول حالة أو حذف ===== */
   function isEmpty(v){ return v===undefined || v===null || v===false || v==='' }
   function mergeSticky(rec, patch){
     if (!isEmpty(patch.printed) && patch.printed===true) rec.printed = true;
@@ -230,93 +202,97 @@ function startApp(){
     if (!isEmpty(patch.mrn) && !rec.mrn) rec.mrn = String(patch.mrn);
     return rec;
   }
-  function persist(rec){
-    const day = recordDay(rec);
-    if(!day) return;
-    const cache = loadDayCache(day);
-    const id = String(rec.ticket);
-    const prev = cache[id] || {};
-    cache[id] = {
-      ticket: id,
-      mrn: prev.mrn || rec.mrn || '',
-      printed: prev.printed || rec.printed || !!rec.tPrinted,
-      served: prev.served || rec.served || false,
-      tPrinted: prev.tPrinted || rec.tPrinted || null,
-      tServed: prev.tServed || rec.tServed || null
-    };
-    saveDayCache(day, cache);
-  }
   function upsert(id,patch){
     const rec = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
     mergeSticky(rec, patch);
     rows.set(id, rec);
-    persist(rec);            // ← نحفظ نسخة محلية لليوم
     render();
   }
 
-  // 5) المستمعون — نتجاهل أي حذف
+  // 5) التحميل/المستمعين — لا ننشئ صفًا إلا من printed، ونرفض أي تخفيض/حذف
   const rPrinted=db.ref(`${ROOT}/printed`);
   const rTP=db.ref(`${ROOT}/times/printed`);
   const rServed=db.ref(`${ROOT}/served`);
   const rTS=db.ref(`${ROOT}/times/served`);
   const rCalls=db.ref(`${ROOT}/calls`);
   const rTickets=db.ref(`${ROOT}/tickets`);
-  const rMRN=db.ref(`${ROOT}/mrn`);
+  const rMRN=db.ref(`${ROOT}/mrn`);           // ✅ جديد: مسار بديل للـMRN
 
   // printed
-  rPrinted.on('child_added', c=>{ const tp=coerce(c.val()); if(tp) upsert(c.key,{printed:true,tPrinted:tp}); });
-  rPrinted.on('child_changed',c=>{ const tp=coerce(c.val()); if(tp) upsert(c.key,{printed:true,tPrinted:tp}); });
-  rPrinted.on('child_removed', ()=>{}); // ignore
+  rPrinted.on('child_added', (c)=>{
+    const tp = coerce(c.val());
+    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
+  });
+  rPrinted.on('child_changed', (c)=>{
+    const tp = coerce(c.val());
+    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
+  });
 
   // times/printed
-  rTP.on('child_added', c=>{ const tp=coerce(c.val()); if(rows.has(c.key)&&tp) upsert(c.key,{tPrinted:tp}); });
-  rTP.on('child_changed',c=>{ const tp=coerce(c.val()); if(rows.has(c.key)&&tp) upsert(c.key,{tPrinted:tp}); });
-  rTP.on('child_removed', ()=>{}); // ignore
+  rTP.on('child_added', (c)=>{
+    const tp = coerce(c.val());
+    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
+  });
+  rTP.on('child_changed', (c)=>{
+    const tp = coerce(c.val());
+    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
+  });
 
   // served
-  rServed.on('child_added', c=>{ if(rows.has(c.key)&&c.val()) upsert(c.key,{served:true}); });
-  rServed.on('child_changed',c=>{ if(rows.has(c.key)&&c.val()) upsert(c.key,{served:true}); });
-  rServed.on('child_removed', ()=>{}); // ignore
+  rServed.on('child_added', (c)=>{
+    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
+  });
+  rServed.on('child_changed', (c)=>{
+    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
+  });
 
   // calls
-  rCalls.on('child_added', c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
-  rCalls.on('child_changed',c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
-  rCalls.on('child_removed', ()=>{}); // ignore
+  rCalls.on('child_added', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
+  rCalls.on('child_changed', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
 
   // times/served
-  rTS.on('child_added', c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
-  rTS.on('child_changed',c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
-  rTS.on('child_removed', ()=>{}); // ignore
+  rTS.on('child_added', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
+  rTS.on('child_changed', (c)=>{
+    const ts = coerce(c.val());
+    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
+  });
 
   // tickets (MRN)
-  rTickets.on('child_added', c=>{
-    if(!rows.has(c.key)) return;
-    const v=c.val();
-    const m=(v&&v.mrn!=null)? normalizeDigits(String(v.mrn)) : '';
-    if(m) upsert(c.key,{mrn:m});
+  rTickets.on('child_added', (c)=>{
+    if (!rows.has(c.key)) return;
+    const v = c.val();
+    const m = (v && v.mrn!=null) ? normalizeDigits(String(v.mrn)) : '';
+    if (m) upsert(c.key, { mrn:m });
   });
-  rTickets.on('child_changed', c=>{
-    if(!rows.has(c.key)) return;
-    const v=c.val();
-    const m=(v&&v.mrn!=null)? normalizeDigits(String(v.mrn)) : '';
-    if(m) upsert(c.key,{mrn:m});
+  rTickets.on('child_changed', (c)=>{
+    if (!rows.has(c.key)) return;
+    const v = c.val();
+    const m = (v && v.mrn!=null) ? normalizeDigits(String(v.mrn)) : '';
+    if (m) upsert(c.key, { mrn:m });
   });
-  rTickets.on('child_removed', ()=>{}); // ignore
 
-  // MRN البديل
-  rMRN.on('child_added', c=>{
-    if(!rows.has(c.key)) return;
-    const m=c.val();
-    const t=(m!=null&&m!=='')? normalizeDigits(String(m)) : '';
-    if(t) upsert(c.key,{mrn:t});
+  // ✅ MRN من المسار البديل /mrn/<ticket>
+  rMRN.on('child_added', (c)=>{
+    if (!rows.has(c.key)) return;
+    const m = c.val();
+    const text = (m!=null && m!=='') ? normalizeDigits(String(m)) : '';
+    if (text) upsert(c.key, { mrn:text });
   });
-  rMRN.on('child_changed', c=>{
-    if(!rows.has(c.key)) return;
-    const m=c.val();
-    const t=(m!=null&&m!=='')? normalizeDigits(String(m)) : '';
-    if(t) upsert(c.key,{mrn:t});
+  rMRN.on('child_changed', (c)=>{
+    if (!rows.has(c.key)) return;
+    const m = c.val();
+    const text = (m!=null && m!=='') ? normalizeDigits(String(m)) : '';
+    if (text) upsert(c.key, { mrn:text });
   });
-  rMRN.on('child_removed', ()=>{}); // ignore
 
   // 6) Render
   function render(){
@@ -334,11 +310,11 @@ function startApp(){
     }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
 
     tbody.innerHTML=base.map(r=>{
-      const served=(!!r.served)||isValidServed(r);
-      const printed=(!!r.printed)||!!r.tPrinted;
-      const status=served?'Served':(printed?'Printed':'No time');
-      const badge=served?'ok':(printed?'pending':'danger');
-      const servedCell=served?fmt(r.tServed):'';
+      const served = (!!r.served) || isValidServed(r);
+      const printed= (!!r.printed) || !!r.tPrinted;
+      const status = served ? 'Served' : (printed ? 'Printed' : 'No time');
+      const badge  = served ? 'ok'     : (printed ? 'pending' : 'danger');
+      const servedCell = served ? fmt(r.tServed) : '';
       return `<tr>
         <td><b>#${r.ticket}</b></td>
         <td>${r.mrn || ''}</td>
@@ -358,7 +334,6 @@ function startApp(){
     }).length;
   }
 
-  // تحديث دوري بسيط (لا يمسّ الحي)
   setInterval(render, 1000);
 
   // CSV
