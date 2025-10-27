@@ -37,21 +37,19 @@
   .pending{background:var(--pbg);color:var(--ptx);border:1px solid var(--pbd)}
   .danger{background:var(--dbg);color:var(--dtx);border:1px solid var(--dbd)}
   .foot{margin-top:10px;color:var(--muted);font-size:12px}
-  /* Password overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff}
   .overlay input{padding:12px 16px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin:10px 0;width:min(280px,80vw)}
   .overlay button{background:#2563eb;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer}
   .overlay .msg{color:#f99;margin-top:6px;min-height:1.2em}
 </style>
 
-<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
 <header><h1>لوحة المتابعة اللحظية — Cardiac Pharmacy Tickets</h1></header>
 
-<!-- PASSWORD gate -->
+<!-- Password -->
 <div id="gate" class="overlay" style="display:none">
   <h2>🔒 أدخل كلمة المرور</h2>
   <input id="pw" type="password" placeholder="Password" />
@@ -90,7 +88,7 @@
 </div>
 
 <script>
-/* ========= Password gate ========= */
+/* ===== Password gate ===== */
 const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
 (function gate(){
   const ok = sessionStorage.getItem(PASS_KEY)===PASS_VAL;
@@ -108,15 +106,15 @@ const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
   }else{ gateEl.remove(); appEl.style.display='block'; startApp(); }
 })();
 
-/* ========= التطبيق ========= */
+/* ===== App ===== */
 function startApp(){
-  // 1) Firebase
+  // Firebase
   const cfg={apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",authDomain:"q-matic-b7d77.firebaseapp.com",databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",projectId:"q-matic-b7d77",storageBucket:"q-matic-b7d77.appspot.com",messagingSenderId:"908187704899",appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"};
   firebase.initializeApp(cfg);
   const db=firebase.database();
-  const ROOT='cardiac_demo'; // ثابت
+  const ROOT='cardiac_demo';
 
-  // 2) عناصر
+  // Elements
   const tbody=document.getElementById('tbody');
   const statTotal=document.getElementById('statTotal');
   const statPrinted=document.getElementById('statPrinted');
@@ -125,13 +123,13 @@ function startApp(){
   const fMrn=document.getElementById('fMrn');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
-  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); render(); };
+  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); seedFromCache(); render(); };
   document.getElementById('btnExport').onclick=exportCSV;
   fMrn.addEventListener('input', render);
   fTk.addEventListener('input', render);
-  fDate.addEventListener('change', render);
+  fDate.addEventListener('change', ()=>{ seedFromCache(); render(); });
 
-  // 3) التاريخ الافتراضي = اليوم
+  // Default date = today
   function setToday(){
     const now=new Date(); const y=now.getFullYear();
     const m=String(now.getMonth()+1).padStart(2,'0');
@@ -140,27 +138,18 @@ function startApp(){
   }
   setToday();
 
-  // 4) Utilities
+  // Utils
   const rows=new Map(); // key=ticket
   function zp(n){return n<10?('0'+n):(''+n);}
   function fmt(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`; }
-
-  // ✅ تعديل: مطابقة التاريخ "محليًا" وليس UTC
   function sameDate(iso, ymd){
     if(!iso || !ymd) return true;
     const d = new Date(iso);
     if(isNaN(d)) return false;
-    const localYmd = new Date(d.getTime() - d.getTimezoneOffset()*60000)
-                      .toISOString().slice(0,10);
+    const localYmd = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
     return localYmd === ymd;
   }
-
-  // يحوّل ٠١٢٣٤٥٦٧٨٩ إلى 0123456789
-  function normalizeDigits(s){
-    return String(s).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
-  }
-
-  // يقبل {ts} أو رقم ms أو ISO
+  function normalizeDigits(s){ return String(s).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)); }
   function coerce(raw){
     if(raw==null) return null;
     if(typeof raw==='string'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
@@ -168,13 +157,11 @@ function startApp(){
     if(typeof raw==='object' && raw.ts!=null){ const d=new Date(raw.ts); return isNaN(d)?null:d.toISOString(); }
     return null;
   }
-  // خدمة مقبولة فقط إن كانت بعد الطباعة
   function isValidServed(rec){
     if(!rec.tServed || !rec.tPrinted) return false;
     const s=new Date(rec.tServed).getTime(), p=new Date(rec.tPrinted).getTime();
     return !Number.isNaN(s) && !Number.isNaN(p) && s>=p;
   }
-  // زمن الانتظار
   function waitingMs(rec){
     const p = rec.tPrinted ? new Date(rec.tPrinted).getTime() : NaN;
     const end = isValidServed(rec) ? new Date(rec.tServed).getTime() : Date.now();
@@ -186,7 +173,39 @@ function startApp(){
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
 
-  /* ===== Sticky merge: تحديث حي بدون نزول حالة أو حذف ===== */
+  /* ===== Sticky cache (لا يمسح) ===== */
+  const CACHE_PREFIX = 'cardiac_report_'; // per-day
+  function cacheKey(day){ return CACHE_PREFIX + day; }
+  function loadDayCache(day){
+    try{ return JSON.parse(localStorage.getItem(cacheKey(day))||'{}'); }catch{ return {}; }
+  }
+  function saveDayCache(day, data){
+    try{ localStorage.setItem(cacheKey(day), JSON.stringify(data)); }catch{}
+  }
+  function recordDay(rec){
+    if(!rec.tPrinted) return null;
+    const d = new Date(new Date(rec.tPrinted).getTime() - new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+    return d;
+  }
+  function seedFromCache(){
+    const day = fDate.value;
+    const cache = loadDayCache(day);
+    Object.values(cache).forEach(r=>{
+      const id = String(r.ticket);
+      const cur = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
+      // sticky merge من الكاش
+      if(r.printed) cur.printed = true;
+      if(r.tPrinted && !cur.tPrinted) cur.tPrinted = r.tPrinted;
+      if(r.served) cur.served = true;
+      if(r.tServed && !cur.tServed) cur.tServed = r.tServed;
+      if(r.mrn && !cur.mrn) cur.mrn = r.mrn;
+      rows.set(id, cur);
+    });
+  }
+  // أول تحميل كاش
+  seedFromCache();
+
+  /* ===== Sticky merge (لا نزول ولا حذف) + حفظ للكاش ===== */
   function isEmpty(v){ return v===undefined || v===null || v===false || v==='' }
   function mergeSticky(rec, patch){
     if (!isEmpty(patch.printed) && patch.printed===true) rec.printed = true;
@@ -202,99 +221,71 @@ function startApp(){
     if (!isEmpty(patch.mrn) && !rec.mrn) rec.mrn = String(patch.mrn);
     return rec;
   }
+  function persist(rec){
+    const day = recordDay(rec);
+    if(!day) return;
+    const cache = loadDayCache(day);
+    const id = String(rec.ticket);
+    const prev = cache[id] || {};
+    cache[id] = {
+      ticket:id,
+      mrn: prev.mrn || rec.mrn || '',
+      printed: prev.printed || rec.printed || !!rec.tPrinted,
+      served: prev.served || rec.served || false,
+      tPrinted: prev.tPrinted || rec.tPrinted || null,
+      tServed: prev.tServed || rec.tServed || null
+    };
+    saveDayCache(day, cache);
+  }
   function upsert(id,patch){
     const rec = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
     mergeSticky(rec, patch);
     rows.set(id, rec);
+    persist(rec);     // ← حفظ لاصق في الكاش
     render();
   }
 
-  // 5) التحميل/المستمعين — لا ننشئ صفًا إلا من printed، ونرفض أي تخفيض/حذف
+  // Firebase refs
   const rPrinted=db.ref(`${ROOT}/printed`);
   const rTP=db.ref(`${ROOT}/times/printed`);
   const rServed=db.ref(`${ROOT}/served`);
   const rTS=db.ref(`${ROOT}/times/served`);
   const rCalls=db.ref(`${ROOT}/calls`);
   const rTickets=db.ref(`${ROOT}/tickets`);
-  const rMRN=db.ref(`${ROOT}/mrn`);           // ✅ جديد: مسار بديل للـMRN
+  const rMRN=db.ref(`${ROOT}/mrn`);
 
   // printed
-  rPrinted.on('child_added', (c)=>{
-    const tp = coerce(c.val());
-    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
-  });
-  rPrinted.on('child_changed', (c)=>{
-    const tp = coerce(c.val());
-    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
-  });
+  rPrinted.on('child_added', c=>{ const tp=coerce(c.val()); if(tp) upsert(c.key,{printed:true,tPrinted:tp}); });
+  rPrinted.on('child_changed',c=>{ const tp=coerce(c.val()); if(tp) upsert(c.key,{printed:true,tPrinted:tp}); });
+  rPrinted.on('child_removed', ()=>{/* نتجاهل الحذف */});
 
   // times/printed
-  rTP.on('child_added', (c)=>{
-    const tp = coerce(c.val());
-    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
-  });
-  rTP.on('child_changed', (c)=>{
-    const tp = coerce(c.val());
-    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
-  });
+  rTP.on('child_added', c=>{ const tp=coerce(c.val()); if(rows.has(c.key)&&tp) upsert(c.key,{tPrinted:tp}); });
+  rTP.on('child_changed',c=>{ const tp=coerce(c.val()); if(rows.has(c.key)&&tp) upsert(c.key,{tPrinted:tp}); });
+  rTP.on('child_removed', ()=>{});
 
   // served
-  rServed.on('child_added', (c)=>{
-    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
-  });
-  rServed.on('child_changed', (c)=>{
-    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
-  });
+  rServed.on('child_added', c=>{ if(rows.has(c.key)&&c.val()) upsert(c.key,{served:true}); });
+  rServed.on('child_changed',c=>{ if(rows.has(c.key)&&c.val()) upsert(c.key,{served:true}); });
+  rServed.on('child_removed', ()=>{});
 
-  // calls
-  rCalls.on('child_added', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
-  rCalls.on('child_changed', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
+  // calls / times/served
+  rCalls.on('child_added', c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rCalls.on('child_changed',c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rCalls.on('child_removed', ()=>{});
+  rTS.on('child_added', c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rTS.on('child_changed',c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rTS.on('child_removed', ()=>{});
 
-  // times/served
-  rTS.on('child_added', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
-  rTS.on('child_changed', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
+  // MRN (tickets + البديل /mrn)
+  rTickets.on('child_added', c=>{ if(!rows.has(c.key)) return; const v=c.val(); const m=(v&&v.mrn!=null)?normalizeDigits(String(v.mrn)):''; if(m) upsert(c.key,{mrn:m}); });
+  rTickets.on('child_changed',c=>{ if(!rows.has(c.key)) return; const v=c.val(); const m=(v&&v.mrn!=null)?normalizeDigits(String(v.mrn)):''; if(m) upsert(c.key,{mrn:m}); });
+  rTickets.on('child_removed', ()=>{});
+  rMRN.on('child_added', c=>{ if(!rows.has(c.key)) return; const m=c.val(); const t=(m!=null&&m!=='')?normalizeDigits(String(m)):''; if(t) upsert(c.key,{mrn:t}); });
+  rMRN.on('child_changed',c=>{ if(!rows.has(c.key)) return; const m=c.val(); const t=(m!=null&&m!=='')?normalizeDigits(String(m)):''; if(t) upsert(c.key,{mrn:t}); });
+  rMRN.on('child_removed', ()=>{});
 
-  // tickets (MRN)
-  rTickets.on('child_added', (c)=>{
-    if (!rows.has(c.key)) return;
-    const v = c.val();
-    const m = (v && v.mrn!=null) ? normalizeDigits(String(v.mrn)) : '';
-    if (m) upsert(c.key, { mrn:m });
-  });
-  rTickets.on('child_changed', (c)=>{
-    if (!rows.has(c.key)) return;
-    const v = c.val();
-    const m = (v && v.mrn!=null) ? normalizeDigits(String(v.mrn)) : '';
-    if (m) upsert(c.key, { mrn:m });
-  });
-
-  // ✅ MRN من المسار البديل /mrn/<ticket>
-  rMRN.on('child_added', (c)=>{
-    if (!rows.has(c.key)) return;
-    const m = c.val();
-    const text = (m!=null && m!=='') ? normalizeDigits(String(m)) : '';
-    if (text) upsert(c.key, { mrn:text });
-  });
-  rMRN.on('child_changed', (c)=>{
-    if (!rows.has(c.key)) return;
-    const m = c.val();
-    const text = (m!=null && m!=='') ? normalizeDigits(String(m)) : '';
-    if (text) upsert(c.key, { mrn:text });
-  });
-
-  // 6) Render
+  // Render
   function render(){
     const mrnF=fMrn.value.trim();
     const tkF=fTk.value.trim();
