@@ -37,21 +37,18 @@
   .pending{background:var(--pbg);color:var(--ptx);border:1px solid var(--pbd)}
   .danger{background:var(--dbg);color:var(--dtx);border:1px solid var(--dbd)}
   .foot{margin-top:10px;color:var(--muted);font-size:12px}
-  /* Password overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff}
   .overlay input{padding:12px 16px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin:10px 0;width:min(280px,80vw)}
   .overlay button{background:#2563eb;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer}
   .overlay .msg{color:#f99;margin-top:6px;min-height:1.2em}
 </style>
 
-<!-- Firebase compat -->
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
 </head>
 <body>
 <header><h1>Dashboard Cardiac — Realtime Tickets</h1></header>
 
-<!-- PASSWORD gate (يطلب عند فتح التبويب لأول مرة فقط؛ الرفرش لا) -->
 <div id="gate" class="overlay" style="display:none">
   <h2>🔒 أدخل كلمة المرور</h2>
   <input id="pw" type="password" placeholder="Password" />
@@ -60,7 +57,6 @@
 </div>
 
 <div id="app" class="wrap" style="display:none">
-  <!-- إحصاءات حسب التاريخ/الفلاتر -->
   <div class="bar">
     <span class="stat">إجمالي التذاكر: <b id="statTotal">0</b></span>
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
@@ -69,7 +65,6 @@
     <span class="stat">Average waiting time: <b id="statAvgWT">00:00:00</b></span>
   </div>
 
-  <!-- فلاتر (بدون MRN) -->
   <div class="filters">
     <div class="field">
       <label for="fTicket">بحث حسب رقم التذكرة</label>
@@ -85,7 +80,6 @@
     </div>
   </div>
 
-  <!-- الجدول -->
   <div class="grid">
     <table>
       <thead><tr>
@@ -99,10 +93,7 @@
 </div>
 
 <script>
-/* ========= Password gate =========
-   - نخزن النجاح في sessionStorage → ينجو مع refresh
-   - ينمسح عند إغلاق التبويب → سيُطلب الباس مجددًا
-*/
+/* ===== Password gate ===== */
 const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
 (function gate(){
   const ok = sessionStorage.getItem(PASS_KEY)===PASS_VAL;
@@ -120,15 +111,13 @@ const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
   }else{ gateEl.remove(); appEl.style.display='block'; startApp(); }
 })();
 
-/* ========= التطبيق ========= */
+/* ===== App ===== */
 function startApp(){
-  // 1) Firebase
   const cfg={apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",authDomain:"q-matic-b7d77.firebaseapp.com",databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",projectId:"q-matic-b7d77",storageBucket:"q-matic-b7d77.appspot.com",messagingSenderId:"908187704899",appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"};
   firebase.initializeApp(cfg);
   const db=firebase.database();
   const ROOT='cardiac_demo';
 
-  // 2) عناصر
   const tbody=document.getElementById('tbody');
   const statTotal=document.getElementById('statTotal');
   const statPrinted=document.getElementById('statPrinted');
@@ -138,43 +127,27 @@ function startApp(){
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
 
-  document.getElementById('btnClear').onclick=()=>{ 
-    fTk.value=''; 
-    setToday(); 
-    render(); 
-  };
+  document.getElementById('btnClear').onclick=()=>{ fTk.value=''; setToday(); render(); };
   document.getElementById('btnExport').onclick=exportCSV;
   fTk.addEventListener('input', render);
   fDate.addEventListener('change', render);
 
-  // 3) التاريخ الافتراضي = اليوم (محلي)
   function setToday(){
     const now=new Date();
-    const local = new Date(now.getTime()-now.getTimezoneOffset()*60000);
-    fDate.value = local.toISOString().slice(0,10);
+    const local=new Date(now.getTime()-now.getTimezoneOffset()*60000);
+    fDate.value=local.toISOString().slice(0,10);
   }
   setToday();
 
-  // 4) Utilities
-  const rows=new Map(); // key=ticket
+  const rows=new Map();
   function zp(n){return n<10?('0'+n):(''+n);}
-  function fmtFull(iso){ // YYYY-MM-DD HH:mm:ss
-    if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return '';
-    return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`;
-  }
-  function fmtTime(iso){ // HH:mm:ss
-    if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return '';
-    return `${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`;
-  }
-  // مطابقة التاريخ محليًا (0:00→23:59:59)
-  function sameDateLocal(iso, ymd){
+  function fmt(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`; }
+  function sameDateLocal(iso,ymd){
     if(!iso||!ymd) return false;
-    const d=new Date(iso);
-    if(isNaN(d)) return false;
+    const d=new Date(iso); if(isNaN(d)) return false;
     const localYmd=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);
     return localYmd===ymd;
   }
-  // يقبل {ts} أو رقم ms أو ISO
   function coerce(raw){
     if(raw==null) return null;
     if(typeof raw==='string'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
@@ -182,13 +155,11 @@ function startApp(){
     if(typeof raw==='object' && raw.ts!=null){ const d=new Date(raw.ts); return isNaN(d)?null:d.toISOString(); }
     return null;
   }
-  // خدمة مقبولة فقط إن كانت بعد الطباعة
   function isValidServed(rec){
     if(!rec.tServed || !rec.tPrinted) return false;
     const s=new Date(rec.tServed).getTime(), p=new Date(rec.tPrinted).getTime();
     return !Number.isNaN(s) && !Number.isNaN(p) && s>=p;
   }
-  // زمن الانتظار
   function waitingMs(rec){
     if(!rec.tPrinted) return NaN;
     const p=new Date(rec.tPrinted).getTime();
@@ -196,19 +167,19 @@ function startApp(){
     return Math.max(0,end-p);
   }
   function dur(ms){
-    if(Number.isNaN(ms)) return '';
+    if(Number.isNaN(ms)) return '00:00:00';
     const s=Math.floor(ms/1000);
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
   function upsert(id,patch){
-    const rec = rows.get(id) || {ticket:id,printed:false,served:false,tPrinted:null,tServed:null};
-    Object.assign(rec, patch);
-    if(!isValidServed(rec)) rec.tServed = null; // لا نعرض Served time إلا لو منطقي
-    rows.set(id, rec);
+    const rec=rows.get(id) || {ticket:id,printed:false,served:false,tPrinted:null,tServed:null};
+    Object.assign(rec,patch);
+    if(!isValidServed(rec)) rec.tServed=null;
+    rows.set(id,rec);
     render();
   }
 
-  // 5) مستمعين (بدون MRN)
+  // Firebase listeners (بدون MRN)
   const rPrinted=db.ref(`${ROOT}/printed`);
   const rTP=db.ref(`${ROOT}/times/printed`);
   const rServed=db.ref(`${ROOT}/served`);
@@ -228,53 +199,48 @@ function startApp(){
   rCalls.on('child_changed',  c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
 
   rTS.on('child_added',       c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
-  rTS.on('child_changed',     c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
+  rTS.on('child_changed',     c=> { ifrows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
 
-  // 6) Render حسب التاريخ المختار + رقم التذكرة
+  // ---- RENDER (الإصلاح هنا) ----
   function render(){
-    const tkF = (document.getElementById('fTicket').value||'').trim();
-    const dateF = (document.getElementById('fDate').value||'').trim();
+    const tkF=(fTk.value||'').trim();
+    const dateF=(fDate.value||'').trim();
 
+    // لا نعرض إلا التذاكر التي تملك tPrinted فعلي (وطابق التاريخ)
     const base=[...rows.values()].filter(r=>{
-      const isPrinted = r.printed || !!r.tPrinted;
-      if(!isPrinted) return false;
-      if(dateF && r.tPrinted && !sameDateLocal(r.tPrinted, dateF)) return false; // تاريخ الطباعة محليًا
+      if(!r.tPrinted) return false;                         // ✅ لازم وقت طباعة
+      if(dateF && !sameDateLocal(r.tPrinted,dateF)) return false; // ✅ التاريخ محليًا
       if(tkF && String(r.ticket)!==String(tkF)) return false;
       return true;
     }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
 
-    // صفوف
-    const html = base.map(r=>{
-      const served = (!!r.served) || isValidServed(r);
-      const status = served ? 'Served' : (isPrinted(r) ? 'Printed' : 'No time');
-      const badge  = served ? 'ok'     : (isPrinted(r) ? 'pending' : 'danger');
+    tbody.innerHTML = base.map(r=>{
+      const served = isValidServed(r) || r.served===true;
+      const status = served ? 'Served' : 'Printed';
+      const badge  = served ? 'ok' : 'pending';
       return `<tr>
         <td><b>#${r.ticket}</b></td>
-        <td>${fmtFull(r.tPrinted)}</td>
-        <td>${served ? fmtFull(r.tServed) : ''}</td>
+        <td>${fmt(r.tPrinted)}</td>
+        <td>${served?fmt(r.tServed):''}</td>
         <td>${dur( waitingMs(r) )}</td>
         <td><span class="badge ${badge}">${status}</span></td>
       </tr>`;
     }).join('');
-    tbody.innerHTML = html;
 
-    // إحصاءات على المعروض فقط
+    // إحصاءات على المعروض
     statTotal.textContent   = base.length;
     statPrinted.textContent = base.length;
     statServed.textContent  = base.filter(x=> isValidServed(x) || x.served===true).length;
     statWaiting.textContent = base.filter(x=> !(isValidServed(x) || x.served===true)).length;
 
-    // متوسط زمن الانتظار (على المعروض)
-    const waits = base.map(waitingMs).filter(v=>!Number.isNaN(v));
-    const avg = waits.length ? Math.round(waits.reduce((a,b)=>a+b,0)/waits.length) : NaN;
+    // متوسط الانتظار على المعروض
+    const waits=base.map(waitingMs).filter(v=>!Number.isNaN(v));
+    const avg=waits.length ? Math.round(waits.reduce((a,b)=>a+b,0)/waits.length) : NaN;
     statAvgWT.textContent = dur(avg);
   }
-  function isPrinted(r){ return r.printed || !!r.tPrinted; }
 
-  // تحديث WT/المتوسط كل ثانية
-  setInterval(render, 1000);
+  setInterval(render,1000);
 
-  // تصدير CSV
   function exportCSV(){
     const headers=['Ticket','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
     const out=[headers.join(',')];
@@ -282,9 +248,9 @@ function startApp(){
       const vals=Array.from(tr.children).map(td=> td.innerText.trim());
       out.push(vals.map(x=> `"${x.replace(/"/g,'""')}"`).join(','));
     });
-    const ymd = document.getElementById('fDate').value || 'all';
+    const name=`cardiac_dashboard_${(fDate.value||'all')}.csv`;
     const blob=new Blob([out.join('\n')],{type:'text/csv;charset=utf-8;'});
-    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`cardiac_dashboard_${ymd}.csv`; a.click();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
   }
 }
 </script>
