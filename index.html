@@ -66,6 +66,7 @@
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
     <span class="stat">المخدّمة: <b id="statServed">0</b></span>
     <span class="stat">قيد الانتظار: <b id="statWaiting">0</b></span>
+     <span class="stat">متوسط زمن الانتظار: <b id="statAvg">—</b></span>
   </div>
 
   <!-- فلاتر -->
@@ -127,6 +128,7 @@ function startApp(){
   const statPrinted=document.getElementById('statPrinted');
   const statServed=document.getElementById('statServed');
   const statWaiting=document.getElementById('statWaiting');
+  const statAvg=document.getElementById('statAvg');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
 document.getElementById('btnClear').onclick=()=>{ fTk.value=''; setToday(); render(); };
@@ -246,6 +248,13 @@ rTS.on('child_changed',     c => { if (rows.has(c.key) && !rows.get(c.key)?.tSer
     const p = (r.printed || !!r.tPrinted), s = ((!!r.served) || isValidServed(r));
     return p && !s;
   }).length;
+    
+    if (servedRows.length) {
+  const sumMs = servedRows.reduce((acc, r) => acc + waitingMs(r), 0);
+  const avgMs = Math.floor(sumMs / servedRows.length);
+  statAvg.textContent = dur(avgMs);   // HH:MM:SS
+} else {
+  statAvg.textContent = '—';
 }
 
   // تحديث WT كل ثانية (خفيف وعلى المعروض فقط)
