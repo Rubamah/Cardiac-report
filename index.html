@@ -175,7 +175,7 @@ fTk.value=''; fDate.value=''; render();
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
   function upsert(id,patch){
-    const rec = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
+const rec = rows.get(id) || {ticket:id,printed:false,served:false,tPrinted:null,tServed:null};
     Object.assign(rec, patch);
 ‎    // تنظيف: لا نحتفظ بختم خدمة غير صالح (يظهر فاضي)
     if(!isValidServed(rec)) rec.tServed = null;
