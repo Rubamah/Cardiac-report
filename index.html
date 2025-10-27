@@ -83,7 +83,7 @@
   <div class="grid">
     <table>
       <thead><tr>
-        <th>Ticket</th><th>MRN</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
+        <th>Ticket</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -131,7 +131,9 @@ function startApp(){
   const fMrn=document.getElementById('fMrn');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
-  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); render(); };
+document.getElementById('btnClear').onclick=()=>{
+  fMrn.value=''; fTk.value=''; fDate.value=''; render();
+};
   document.getElementById('btnExport').onclick=exportCSV;
   fMrn.addEventListener('input', render);
   fTk.addEventListener('input', render);
@@ -144,7 +146,6 @@ function startApp(){
     const d=String(now.getDate()).padStart(2,'0');
     fDate.value=`${y}-${m}-${d}`;
   }
-  setToday();
 
   // 4) Utilities
   const rows=new Map(); // key=ticket
@@ -235,7 +236,6 @@ function startApp(){
       const servedCell = served ? fmt(r.tServed) : '';      // يظل فاضي حتى يتنادَى
       return `<tr>
         <td><b>#${r.ticket}</b></td>
-        <td>${r.mrn || ''}</td>
         <td>${fmt(r.tPrinted)}</td>
         <td>${servedCell}</td>
         <td>${dur( waitingMs(r) )}</td>
@@ -258,7 +258,7 @@ function startApp(){
 
 ‎  // تصدير CSV للصفوف المعروضة
   function exportCSV(){
-    const headers=['Ticket','MRN','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
+    const headers=['Ticket','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
     const out=[headers.join(',')];
     Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
       const vals=Array.from(tr.children).map(td=> td.innerText.trim());
