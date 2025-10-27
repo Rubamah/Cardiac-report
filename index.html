@@ -12,6 +12,10 @@
     --okbg:#0e2e2a; --okbd:#1a5e56; --oktx:#8ff3e5;
     --pbg:#2b2040; --pbd:#57468a; --ptx:#d3b3ff;
     --dbg:#3a1616; --dbd:#6b2323; --dtx:#ffb3b3;
+
+    --avg-ok-bg:#0e2e2a;   --avg-ok-bd:#1a5e56;   --avg-ok-tx:#8ff3e5;
+    --avg-mid-bg:#2b2040;  --avg-mid-bd:#57468a;  --avg-mid-tx:#d3b3ff;
+    --avg-bad-bg:#3a1616;  --avg-bad-bd:#6b2323;  --avg-bad-tx:#ffb3b3;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif}
@@ -28,7 +32,7 @@
   .actions{grid-column:span 3;display:flex;gap:8px}
   button{border:1px solid var(--border);background:#0f1a2e;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer}
   .grid{margin-top:14px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:auto}
-  table{width:100%;border-collapse:collapse;min-width:900px}
+  table{width:100%;border-collapse:collapse;min-width:800px}
   thead th{position:sticky;top:0;background:var(--head);color:#bcd0f7;font-weight:700;text-align:center;padding:12px;border-bottom:1px solid #203056}
   tbody td{padding:10px 8px;border-bottom:1px solid #16213a;text-align:center;font-variant-numeric:tabular-nums}
   tr:hover td{background:#0e172a80}
@@ -41,7 +45,12 @@
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff}
   .overlay input{padding:12px 16px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin:10px 0;width:min(280px,80vw)}
   .overlay button{background:#2563eb;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer}
-  .overlay .msg{color:#f99;margin-top:6px;min-height:1.2em}
+
+  /* average color states */
+  .avgBox{transition:.15s}
+  .avg-ok   {background:var(--avg-ok-bg);  border:1px solid var(--avg-ok-bd);  color:var(--avg-ok-tx)}
+  .avg-mid  {background:var(--avg-mid-bg); border:1px solid var(--avg-mid-bd); color:var(--avg-mid-tx)}
+  .avg-bad  {background:var(--avg-bad-bg); border:1px solid var(--avg-bad-bd); color:var(--avg-bad-tx)}
 </style>
 
 <!-- Firebase compat -->
@@ -60,17 +69,17 @@
 </div>
 
 <div id="app" class="wrap" style="display:none">
-  <!-- إحصاءات حسب التاريخ/الفلاتر -->
+  <!-- إحصاءات -->
   <div class="bar">
     <span class="stat">إجمالي التذاكر: <b id="statTotal">0</b></span>
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
     <span class="stat">المخدّمة: <b id="statServed">0</b></span>
     <span class="stat">قيد الانتظار: <b id="statWaiting">0</b></span>
+    <span class="stat avgBox" id="avgBox">متوسط الانتظار: <b id="statAvg">--:--:--</b></span>
   </div>
 
   <!-- فلاتر -->
   <div class="filters">
-    <div class="field"><label for="fMrn">بحث حسب MRN</label><input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" /></div>
     <div class="field"><label for="fTicket">بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
     <div class="field"><label for="fDate">التاريخ (حسب وقت الطباعة)</label><input id="fDate" type="date" /></div>
     <div class="actions">
@@ -83,7 +92,7 @@
   <div class="grid">
     <table>
       <thead><tr>
-        <th>Ticket</th><th>MRN</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
+        <th>Ticket</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -93,10 +102,7 @@
 </div>
 
 <script>
-/* ========= Password gate =========
-   - نخزن النجاح في sessionStorage → ينجو مع refresh
-   - ينمسح عند إغلاق التبويب → سيُطلب الباس مجددًا
-*/
+/* ========= Password gate ========= */
 const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
 (function gate(){
   const ok = sessionStorage.getItem(PASS_KEY)===PASS_VAL;
@@ -120,7 +126,7 @@ function startApp(){
   const cfg={apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",authDomain:"q-matic-b7d77.firebaseapp.com",databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",projectId:"q-matic-b7d77",storageBucket:"q-matic-b7d77.appspot.com",messagingSenderId:"908187704899",appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"};
   firebase.initializeApp(cfg);
   const db=firebase.database();
-  const ROOT='cardiac_demo'; // ثابت
+  const ROOT='cardiac_demo';
 
   // 2) عناصر
   const tbody=document.getElementById('tbody');
@@ -128,30 +134,40 @@ function startApp(){
   const statPrinted=document.getElementById('statPrinted');
   const statServed=document.getElementById('statServed');
   const statWaiting=document.getElementById('statWaiting');
-  const fMrn=document.getElementById('fMrn');
+  const statAvg=document.getElementById('statAvg');
+  const avgBox=document.getElementById('avgBox');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
-  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); render(); };
+  document.getElementById('btnClear').onclick=()=>{ fTk.value=''; setToday(); render(); };
   document.getElementById('btnExport').onclick=exportCSV;
-  fMrn.addEventListener('input', render);
   fTk.addEventListener('input', render);
   fDate.addEventListener('change', render);
 
-  // 3) التاريخ الافتراضي = اليوم
+  // 3) التاريخ الافتراضي = اليوم (محلي)
   function setToday(){
-    const now=new Date(); const y=now.getFullYear();
-    const m=String(now.getMonth()+1).padStart(2,'0');
-    const d=String(now.getDate()).padStart(2,'0');
+    const now=new Date();
+    const y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0'), d=String(now.getDate()).padStart(2,'0');
     fDate.value=`${y}-${m}-${d}`;
   }
   setToday();
 
-  // 4) Utilities
+  // 4) Utilities (كلها محلية — حد اليوم عند 00:00 المحلي)
   const rows=new Map(); // key=ticket
   function zp(n){return n<10?('0'+n):(''+n);}
-  function fmt(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return ''; return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`; }
-  function sameDate(iso,ymd){ if(!iso||!ymd) return true; const d=new Date(iso); if(isNaN(d)) return false; return d.toISOString().slice(0,10)===ymd; }
-  // يقبل {ts} أو رقم ms أو ISO
+  function fmt(iso){
+    if(!iso) return '';
+    const d=new Date(iso);
+    if(isNaN(d)) return '';
+    return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`;
+  }
+  // مقارنة تاريخ محليًا (YYYY-MM-DD)
+  function sameDate(iso,ymd){
+    if(!iso||!ymd) return true;
+    const d=new Date(iso); if(isNaN(d)) return false;
+    const local = `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())}`;
+    return local === ymd;
+  }
+  // يقبل {ts} أو رقم ms أو ISO -> ISO
   function coerce(raw){
     if(raw==null) return null;
     if(typeof raw==='string'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
@@ -159,13 +175,11 @@ function startApp(){
     if(typeof raw==='object' && raw.ts!=null){ const d=new Date(raw.ts); return isNaN(d)?null:d.toISOString(); }
     return null;
   }
-  // خدمة مقبولة فقط إن كانت بعد الطباعة
   function isValidServed(rec){
     if(!rec.tServed || !rec.tPrinted) return false;
     const s=new Date(rec.tServed).getTime(), p=new Date(rec.tPrinted).getTime();
     return !Number.isNaN(s) && !Number.isNaN(p) && s>=p;
   }
-  // زمن الانتظار
   function waitingMs(rec){
     const p = rec.tPrinted ? new Date(rec.tPrinted).getTime() : NaN;
     const end = isValidServed(rec) ? new Date(rec.tServed).getTime() : Date.now();
@@ -176,130 +190,57 @@ function startApp(){
     const s=Math.floor(ms/1000);
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
-
-  /* ===== Sticky merge: تحديث حي بدون نزول حالة أو حذف ===== */
-  function isEmpty(v){ return v===undefined || v===null || v===false || v==='' }
-  function mergeSticky(rec, patch){
-    // لا نسمح بتصفير printed/served بعد رفعها
-    if (!isEmpty(patch.printed) && patch.printed===true) rec.printed = true;
-    if (!isEmpty(patch.served)  && patch.served ===true) rec.served  = true;
-
-    // أول طابع طباعة فقط
-    if (!isEmpty(patch.tPrinted) && !rec.tPrinted) rec.tPrinted = patch.tPrinted;
-
-    // أول طابع خدمة صالح فقط (بعد الطباعة)
-    if (!isEmpty(patch.tServed) && !rec.tServed) {
-      const tmp = { tPrinted: rec.tPrinted || patch.tPrinted || null, tServed: patch.tServed };
-      if (isValidServed(tmp)) rec.tServed = patch.tServed;
-    }
-
-    // MRN أول قيمة غير فاضية فقط
-    if (!isEmpty(patch.mrn) && !rec.mrn) rec.mrn = String(patch.mrn);
-    return rec;
-  }
   function upsert(id,patch){
-    const rec = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
-    mergeSticky(rec, patch);
+    const rec = rows.get(id) || {ticket:id,printed:false,served:false,tPrinted:null,tServed:null};
+    Object.assign(rec, patch);
+    if(!isValidServed(rec)) rec.tServed = null; // لا نظهر خدمة غير منطقية
     rows.set(id, rec);
     render();
   }
 
-  // 5) التحميل/المستمعين — لا ننشئ صفًا إلا من printed، ونرفض أي تخفيض/حذف
+  // 5) المستمعون — لا صف إلا إذا طُبع
   const rPrinted=db.ref(`${ROOT}/printed`);
   const rTP=db.ref(`${ROOT}/times/printed`);
   const rServed=db.ref(`${ROOT}/served`);
   const rTS=db.ref(`${ROOT}/times/served`);
   const rCalls=db.ref(`${ROOT}/calls`);
-  const rTickets=db.ref(`${ROOT}/tickets`);
 
-  // printed: لا صف بدون طباعة. نتجاهل أي تغيير فارغ/false
-  rPrinted.on('child_added', (c)=>{
-    const tp = coerce(c.val());
-    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
-  });
-  rPrinted.on('child_changed', (c)=>{
-    const tp = coerce(c.val());
-    if (tp) upsert(c.key, { printed:true, tPrinted:tp });
-    // لو tp فاضي/غير صالح → نتجاهل (لا ننزل الحالة)
-  });
+  rPrinted.on('child_added',  c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+  rPrinted.on('child_changed',c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
 
-  // times/printed: نثبّت أول طابع فقط
-  rTP.on('child_added', (c)=>{
-    const tp = coerce(c.val());
-    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
-  });
-  rTP.on('child_changed', (c)=>{
-    const tp = coerce(c.val());
-    if (rows.has(c.key) && tp) upsert(c.key, { tPrinted:tp });
-  });
+  rTP.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+  rTP.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
 
-  // served: نرفع لـ true فقط، ونتجاهل false/null
-  rServed.on('child_added', (c)=>{
-    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
-  });
-  rServed.on('child_changed', (c)=>{
-    if (rows.has(c.key) && c.val()) upsert(c.key, { served:true });
-  });
+  rServed.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
+  rServed.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
 
-  // calls: نأخذ أول طابع خدمة صالح فقط
-  rCalls.on('child_added', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
-  rCalls.on('child_changed', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
+  rCalls.on('child_added',    c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+  rCalls.on('child_changed',  c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
 
-  // times/served: نفس الشيء (أول قيمة صالحة فقط)
-  rTS.on('child_added', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
-  rTS.on('child_changed', (c)=>{
-    const ts = coerce(c.val());
-    if (rows.has(c.key) && ts) upsert(c.key, { tServed:ts });
-  });
+  rTS.on('child_added',       c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
+  rTS.on('child_changed',     c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
 
-  // tickets (MRN): نثبّت أول MRN فقط ولا ننزل لقيمة فاضية
-  rTickets.on('child_added', (c)=>{
-    if (!rows.has(c.key)) return;
-    const v = c.val();
-    const m = (v && v.mrn!=null) ? String(v.mrn) : '';
-    if (m) upsert(c.key, { mrn:m });
-  });
-  rTickets.on('child_changed', (c)=>{
-    if (!rows.has(c.key)) return;
-    const v = c.val();
-    const m = (v && v.mrn!=null) ? String(v.mrn) : '';
-    if (m) upsert(c.key, { mrn:m });
-  });
-
-  // 6) Render حسب التاريخ والفلترة، وحالة Served منطقية
+  // 6) Render مع متوسط و ألوانه
   function render(){
-    const mrnF=fMrn.value.trim();
     const tkF=fTk.value.trim();
     const dateF=fDate.value;
 
-    // يظهر المطبوعة فقط + تاريخ الطباعة + باقي الفلاتر
     const base=[...rows.values()].filter(r=>{
       const isPrinted=r.printed||!!r.tPrinted;
       if(!isPrinted) return false;
       if(dateF && r.tPrinted && !sameDate(r.tPrinted,dateF)) return false;
-      if(mrnF && (!r.mrn || !String(r.mrn).includes(mrnF))) return false;
       if(tkF && String(r.ticket)!==String(tkF)) return false;
       return true;
     }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
 
     tbody.innerHTML=base.map(r=>{
-      const served = (!!r.served) || isValidServed(r);      // الحالة المنطقية
+      const served = (!!r.served) || isValidServed(r);
       const printed= (!!r.printed) || !!r.tPrinted;
       const status = served ? 'Served' : (printed ? 'Printed' : 'No time');
       const badge  = served ? 'ok'     : (printed ? 'pending' : 'danger');
-      const servedCell = served ? fmt(r.tServed) : '';      // يظل فاضي حتى يتنادَى
+      const servedCell = served ? fmt(r.tServed) : '';
       return `<tr>
         <td><b>#${r.ticket}</b></td>
-        <td>${r.mrn || ''}</td>
         <td>${fmt(r.tPrinted)}</td>
         <td>${servedCell}</td>
         <td>${dur( waitingMs(r) )}</td>
@@ -307,7 +248,7 @@ function startApp(){
       </tr>`;
     }).join('');
 
-    // إحصاءات على المعروض (تاريخ/فلاتر فقط)
+    // إحصاءات على المعروض (محليًا ووفق التاريخ المختار)
     statTotal.textContent   = base.length;
     statPrinted.textContent = base.filter(r=> r.printed || !!r.tPrinted).length;
     statServed.textContent  = base.filter(r=> (!!r.served) || isValidServed(r)).length;
@@ -315,14 +256,29 @@ function startApp(){
       const p=(r.printed||!!r.tPrinted), s=(!!r.served)||isValidServed(r);
       return p && !s;
     }).length;
+
+    // متوسط وقت الانتظار + تلوين
+    const validTimes = base.map(r=> waitingMs(r)).filter(ms => !Number.isNaN(ms));
+    if(validTimes.length>0){
+      const avg = validTimes.reduce((a,b)=>a+b,0)/validTimes.length;
+      statAvg.textContent = dur(avg);
+
+      avgBox.classList.remove('avg-ok','avg-mid','avg-bad');
+      if(avg < 2*60*1000)           avgBox.classList.add('avg-ok');  // < 02:00
+      else if(avg < 5*60*1000)      avgBox.classList.add('avg-mid'); // 02:00–04:59
+      else                          avgBox.classList.add('avg-bad'); // ≥ 05:00
+    }else{
+      statAvg.textContent='--:--:--';
+      avgBox.classList.remove('avg-ok','avg-mid','avg-bad');
+    }
   }
 
-  // تحديث WT كل ثانية (خفيف وعلى المعروض فقط)
+  // تحديث كل ثانية
   setInterval(render, 1000);
 
-  // تصدير CSV للصفوف المعروضة
+  // CSV
   function exportCSV(){
-    const headers=['Ticket','MRN','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
+    const headers=['Ticket','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
     const out=[headers.join(',')];
     Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
       const vals=Array.from(tr.children).map(td=> td.innerText.trim());
