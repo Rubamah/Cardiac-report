@@ -8,14 +8,10 @@
 <style>
   :root{
     --bg:#0b1320; --card:#111a2b; --ink:#eaf2ff; --muted:#94a3b8;
-    --accent:#14b8a6; --border:#1f2a44; --head:#0f1626;
+    --border:#1f2a44; --head:#0f1626;
     --okbg:#0e2e2a; --okbd:#1a5e56; --oktx:#8ff3e5;
     --pbg:#2b2040; --pbd:#57468a; --ptx:#d3b3ff;
     --dbg:#3a1616; --dbd:#6b2323; --dtx:#ffb3b3;
-
-    --avg-ok-bg:#0e2e2a;   --avg-ok-bd:#1a5e56;   --avg-ok-tx:#8ff3e5;
-    --avg-mid-bg:#2b2040;  --avg-mid-bd:#57468a;  --avg-mid-tx:#d3b3ff;
-    --avg-bad-bg:#3a1616;  --avg-bad-bd:#6b2323;  --avg-bad-tx:#ffb3b3;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif}
@@ -26,13 +22,13 @@
   .stat{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
   .stat b{color:#fff}
   .filters{display:grid;gap:12px;grid-template-columns:repeat(12,1fr);align-items:end;margin-top:8px}
-  .field{grid-column:span 3;background:var(--card);border:1px solid var(--border);padding:10px;border-radius:12px}
+  .field{grid-column:span 4;background:var(--card);border:1px solid var(--border);padding:10px;border-radius:12px}
   .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
   .field input{width:100%;background:#0a1220;border:1px solid #23314f;color:var(--ink);padding:8px 10px;border-radius:8px;outline:none}
-  .actions{grid-column:span 3;display:flex;gap:8px}
+  .actions{grid-column:span 4;display:flex;gap:8px}
   button{border:1px solid var(--border);background:#0f1a2e;color:var(--ink);padding:8px 12px;border-radius:10px;cursor:pointer}
   .grid{margin-top:14px;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:auto}
-  table{width:100%;border-collapse:collapse;min-width:800px}
+  table{width:100%;border-collapse:collapse;min-width:900px}
   thead th{position:sticky;top:0;background:var(--head);color:#bcd0f7;font-weight:700;text-align:center;padding:12px;border-bottom:1px solid #203056}
   tbody td{padding:10px 8px;border-bottom:1px solid #16213a;text-align:center;font-variant-numeric:tabular-nums}
   tr:hover td{background:#0e172a80}
@@ -41,16 +37,12 @@
   .pending{background:var(--pbg);color:var(--ptx);border:1px solid var(--pbd)}
   .danger{background:var(--dbg);color:var(--dtx);border:1px solid var(--dbd)}
   .foot{margin-top:10px;color:var(--muted);font-size:12px}
+
   /* Password overlay */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff}
   .overlay input{padding:12px 16px;font-size:18px;border-radius:10px;border:1px solid #333;text-align:center;margin:10px 0;width:min(280px,80vw)}
   .overlay button{background:#2563eb;color:#fff;border:0;padding:10px 16px;border-radius:10px;font-weight:700;cursor:pointer}
-
-  /* average color states */
-  .avgBox{transition:.15s}
-  .avg-ok   {background:var(--avg-ok-bg);  border:1px solid var(--avg-ok-bd);  color:var(--avg-ok-tx)}
-  .avg-mid  {background:var(--avg-mid-bg); border:1px solid var(--avg-mid-bd); color:var(--avg-mid-tx)}
-  .avg-bad  {background:var(--avg-bad-bg); border:1px solid var(--avg-bad-bd); color:var(--avg-bad-tx)}
+  .overlay .msg{color:#f99;margin-top:6px;min-height:1.2em}
 </style>
 
 <!-- Firebase compat -->
@@ -60,7 +52,7 @@
 <body>
 <header><h1>لوحة المتابعة اللحظية — Cardiac Pharmacy Tickets</h1></header>
 
-<!-- PASSWORD gate (يطلب عند فتح التبويب لأول مرة فقط؛ الرفرش لا) -->
+<!-- PASSWORD gate (once per tab; survives refresh) -->
 <div id="gate" class="overlay" style="display:none">
   <h2>🔒 أدخل كلمة المرور</h2>
   <input id="pw" type="password" placeholder="Password" />
@@ -69,31 +61,43 @@
 </div>
 
 <div id="app" class="wrap" style="display:none">
-  <!-- إحصاءات -->
+  <!-- Stats (filtered set only) -->
   <div class="bar">
     <span class="stat">إجمالي التذاكر: <b id="statTotal">0</b></span>
     <span class="stat">المطبوعة: <b id="statPrinted">0</b></span>
     <span class="stat">المخدّمة: <b id="statServed">0</b></span>
     <span class="stat">قيد الانتظار: <b id="statWaiting">0</b></span>
-    <span class="stat avgBox" id="avgBox">متوسط الانتظار: <b id="statAvg">--:--:--</b></span>
+    <span class="stat">متوسط الانتظار: <b id="statAvg">--:--:--</b></span>
   </div>
 
-  <!-- فلاتر -->
+  <!-- Filters -->
   <div class="filters">
-    <div class="field"><label for="fTicket">بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
-    <div class="field"><label for="fDate">التاريخ (حسب وقت الطباعة)</label><input id="fDate" type="date" /></div>
+    <div class="field">
+      <label for="fTicket">بحث حسب رقم التذكرة</label>
+      <input id="fTicket" placeholder="مثال: 87" inputmode="numeric" />
+    </div>
+    <div class="field">
+      <label for="fDate">التاريخ (حسب وقت الطباعة)</label>
+      <input id="fDate" type="date" />
+    </div>
     <div class="actions">
       <button id="btnClear">مسح الفلاتر</button>
       <button id="btnExport">تصدير CSV</button>
     </div>
   </div>
 
-  <!-- الجدول -->
+  <!-- Table -->
   <div class="grid">
     <table>
-      <thead><tr>
-        <th>Ticket</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
-      </tr></thead>
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>Printed Time</th>
+          <th>Served Time</th>
+          <th>Waiting Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -120,22 +124,21 @@ const PASS_KEY='phReportOK', PASS_VAL='1', PASSWORD='PhReport';
   }else{ gateEl.remove(); appEl.style.display='block'; startApp(); }
 })();
 
-/* ========= التطبيق ========= */
+/* ========= App ========= */
 function startApp(){
-  // 1) Firebase
+  // Firebase
   const cfg={apiKey:"AIzaSyCWWnMsge75Q3_MDF9Aj9wo4C5KD6RVGfw",authDomain:"q-matic-b7d77.firebaseapp.com",databaseURL:"https://q-matic-b7d77-default-rtdb.firebaseio.com",projectId:"q-matic-b7d77",storageBucket:"q-matic-b7d77.appspot.com",messagingSenderId:"908187704899",appId:"1:908187704899:web:b8bcf33cda90bafe81bef6"};
   firebase.initializeApp(cfg);
   const db=firebase.database();
   const ROOT='cardiac_demo';
 
-  // 2) عناصر
+  // Elements
   const tbody=document.getElementById('tbody');
   const statTotal=document.getElementById('statTotal');
   const statPrinted=document.getElementById('statPrinted');
   const statServed=document.getElementById('statServed');
   const statWaiting=document.getElementById('statWaiting');
   const statAvg=document.getElementById('statAvg');
-  const avgBox=document.getElementById('avgBox');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
   document.getElementById('btnClear').onclick=()=>{ fTk.value=''; setToday(); render(); };
@@ -143,31 +146,31 @@ function startApp(){
   fTk.addEventListener('input', render);
   fDate.addEventListener('change', render);
 
-  // 3) التاريخ الافتراضي = اليوم (محلي)
+  // Default date = today (local)
   function setToday(){
-    const now=new Date();
-    const y=now.getFullYear(), m=String(now.getMonth()+1).padStart(2,'0'), d=String(now.getDate()).padStart(2,'0');
+    const now=new Date(); const y=now.getFullYear();
+    const m=String(now.getMonth()+1).padStart(2,'0');
+    const d=String(now.getDate()).padStart(2,'0');
     fDate.value=`${y}-${m}-${d}`;
   }
   setToday();
 
-  // 4) Utilities (كلها محلية — حد اليوم عند 00:00 المحلي)
+  // Helpers
   const rows=new Map(); // key=ticket
   function zp(n){return n<10?('0'+n):(''+n);}
   function fmt(iso){
     if(!iso) return '';
-    const d=new Date(iso);
-    if(isNaN(d)) return '';
+    const d=new Date(iso); if(isNaN(d)) return '';
     return `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())} ${zp(d.getHours())}:${zp(d.getMinutes())}:${zp(d.getSeconds())}`;
   }
-  // مقارنة تاريخ محليًا (YYYY-MM-DD)
-  function sameDate(iso,ymd){
+  // Local-day compare for printed time (midnight rule)
+  function sameDateLocal(iso,ymd){
     if(!iso||!ymd) return true;
     const d=new Date(iso); if(isNaN(d)) return false;
-    const local = `${d.getFullYear()}-${zp(d.getMonth()+1)}-${zp(d.getDate())}`;
-    return local === ymd;
+    const local = new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    return local===ymd;
   }
-  // يقبل {ts} أو رقم ms أو ISO -> ISO
+  // Accept {ts} object, ms number, or ISO
   function coerce(raw){
     if(raw==null) return null;
     if(typeof raw==='string'){ const d=new Date(raw); return isNaN(d)?null:d.toISOString(); }
@@ -175,11 +178,13 @@ function startApp(){
     if(typeof raw==='object' && raw.ts!=null){ const d=new Date(raw.ts); return isNaN(d)?null:d.toISOString(); }
     return null;
   }
+  // Served valid only if after printed
   function isValidServed(rec){
     if(!rec.tServed || !rec.tPrinted) return false;
     const s=new Date(rec.tServed).getTime(), p=new Date(rec.tPrinted).getTime();
     return !Number.isNaN(s) && !Number.isNaN(p) && s>=p;
   }
+  // Waiting time: printed → served (or → now if not served)
   function waitingMs(rec){
     const p = rec.tPrinted ? new Date(rec.tPrinted).getTime() : NaN;
     const end = isValidServed(rec) ? new Date(rec.tServed).getTime() : Date.now();
@@ -190,49 +195,65 @@ function startApp(){
     const s=Math.floor(ms/1000);
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
+
+  /* Sticky merge: never downgrade (keeps data even if Firebase keys are cleared later) */
+  function isEmpty(v){ return v===undefined || v===null || v===false || v==='' }
+  function mergeSticky(rec, patch){
+    if (!isEmpty(patch.printed) && patch.printed===true) rec.printed = true;
+    if (!isEmpty(patch.served)  && patch.served ===true) rec.served  = true;
+    if (!isEmpty(patch.tPrinted) && !rec.tPrinted) rec.tPrinted = patch.tPrinted;
+    if (!isEmpty(patch.tServed) && !rec.tServed) {
+      const tmp={ tPrinted: rec.tPrinted || patch.tPrinted || null, tServed: patch.tServed };
+      if (isValidServed(tmp)) rec.tServed = patch.tServed;
+    }
+    return rec;
+  }
   function upsert(id,patch){
     const rec = rows.get(id) || {ticket:id,printed:false,served:false,tPrinted:null,tServed:null};
-    Object.assign(rec, patch);
-    if(!isValidServed(rec)) rec.tServed = null; // لا نظهر خدمة غير منطقية
+    mergeSticky(rec, patch);
     rows.set(id, rec);
     render();
   }
 
-  // 5) المستمعون — لا صف إلا إذا طُبع
+  // Firebase listeners — only create rows from "printed"
   const rPrinted=db.ref(`${ROOT}/printed`);
   const rTP=db.ref(`${ROOT}/times/printed`);
   const rServed=db.ref(`${ROOT}/served`);
   const rTS=db.ref(`${ROOT}/times/served`);
   const rCalls=db.ref(`${ROOT}/calls`);
 
-  rPrinted.on('child_added',  c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
-  rPrinted.on('child_changed',c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+  // printed
+  rPrinted.on('child_added', c=>{ const tp=coerce(c.val()); if(tp) upsert(c.key,{printed:true,tPrinted:tp}); });
+  rPrinted.on('child_changed',c=>{ const tp=coerce(c.val()); if(tp) upsert(c.key,{printed:true,tPrinted:tp}); });
 
-  rTP.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
-  rTP.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+  // times/printed
+  rTP.on('child_added',  c=>{ const tp=coerce(c.val()); if(rows.has(c.key)&&tp) upsert(c.key,{tPrinted:tp}); });
+  rTP.on('child_changed',c=>{ const tp=coerce(c.val()); if(rows.has(c.key)&&tp) upsert(c.key,{tPrinted:tp}); });
 
-  rServed.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
-  rServed.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
+  // served (boolean)
+  rServed.on('child_added',  c=>{ if(rows.has(c.key)&&c.val()) upsert(c.key,{served:true}); });
+  rServed.on('child_changed',c=>{ if(rows.has(c.key)&&c.val()) upsert(c.key,{served:true}); });
 
-  rCalls.on('child_added',    c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
-  rCalls.on('child_changed',  c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+  // served time (calls or times/served) — first valid only
+  rCalls.on('child_added',   c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rCalls.on('child_changed', c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rTS.on('child_added',      c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
+  rTS.on('child_changed',    c=>{ const ts=coerce(c.val()); if(rows.has(c.key)&&ts) upsert(c.key,{tServed:ts}); });
 
-  rTS.on('child_added',       c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
-  rTS.on('child_changed',     c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
-
-  // 6) Render مع متوسط و ألوانه
+  // Render
   function render(){
-    const tkF=fTk.value.trim();
+    const tkF=(fTk.value||'').trim();
     const dateF=fDate.value;
 
     const base=[...rows.values()].filter(r=>{
       const isPrinted=r.printed||!!r.tPrinted;
       if(!isPrinted) return false;
-      if(dateF && r.tPrinted && !sameDate(r.tPrinted,dateF)) return false;
+      if(dateF && r.tPrinted && !sameDateLocal(r.tPrinted,dateF)) return false;
       if(tkF && String(r.ticket)!==String(tkF)) return false;
       return true;
     }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
 
+    // table
     tbody.innerHTML=base.map(r=>{
       const served = (!!r.served) || isValidServed(r);
       const printed= (!!r.printed) || !!r.tPrinted;
@@ -248,35 +269,26 @@ function startApp(){
       </tr>`;
     }).join('');
 
-    // إحصاءات على المعروض (محليًا ووفق التاريخ المختار)
+    // stats on filtered set
     statTotal.textContent   = base.length;
     statPrinted.textContent = base.filter(r=> r.printed || !!r.tPrinted).length;
-    statServed.textContent  = base.filter(r=> (!!r.served) || isValidServed(r)).length;
-    statWaiting.textContent = base.filter(r=>{
-      const p=(r.printed||!!r.tPrinted), s=(!!r.served)||isValidServed(r);
-      return p && !s;
-    }).length;
+    const servedRows        = base.filter(r=> (!!r.served) || isValidServed(r));
+    statServed.textContent  = servedRows.length;
+    statWaiting.textContent = base.length - servedRows.length;
 
-    // متوسط وقت الانتظار + تلوين
-    const validTimes = base.map(r=> waitingMs(r)).filter(ms => !Number.isNaN(ms));
-    if(validTimes.length>0){
-      const avg = validTimes.reduce((a,b)=>a+b,0)/validTimes.length;
-      statAvg.textContent = dur(avg);
-
-      avgBox.classList.remove('avg-ok','avg-mid','avg-bad');
-      if(avg < 2*60*1000)           avgBox.classList.add('avg-ok');  // < 02:00
-      else if(avg < 5*60*1000)      avgBox.classList.add('avg-mid'); // 02:00–04:59
-      else                          avgBox.classList.add('avg-bad'); // ≥ 05:00
+    // average waiting (served only)
+    if(servedRows.length){
+      const sum = servedRows.reduce((acc,r)=>acc + waitingMs(r), 0);
+      statAvg.textContent = dur(Math.floor(sum/servedRows.length));
     }else{
-      statAvg.textContent='--:--:--';
-      avgBox.classList.remove('avg-ok','avg-mid','avg-bad');
+      statAvg.textContent = '--:--:--';
     }
   }
 
-  // تحديث كل ثانية
+  // Live tick for waiting times
   setInterval(render, 1000);
 
-  // CSV
+  // CSV of the visible rows
   function exportCSV(){
     const headers=['Ticket','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
     const out=[headers.join(',')];
