@@ -70,7 +70,6 @@
 
 ‎  <!-- فلاتر -->
   <div class="filters">
-    <div class="field"><label for="fMrn">بحث حسب MRN</label><input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" /></div>
     <div class="field"><label for="fTicket">بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
     <div class="field"><label for="fDate">التاريخ (حسب وقت الطباعة)</label><input id="fDate" type="date" /></div>
     <div class="actions">
@@ -128,14 +127,12 @@ function startApp(){
   const statPrinted=document.getElementById('statPrinted');
   const statServed=document.getElementById('statServed');
   const statWaiting=document.getElementById('statWaiting');
-  const fMrn=document.getElementById('fMrn');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
 document.getElementById('btnClear').onclick=()=>{
-  fMrn.value=''; fTk.value=''; fDate.value=''; render();
+fTk.value=''; fDate.value=''; render();
 };
   document.getElementById('btnExport').onclick=exportCSV;
-  fMrn.addEventListener('input', render);
   fTk.addEventListener('input', render);
   fDate.addEventListener('change', render);
 
@@ -214,7 +211,6 @@ document.getElementById('btnClear').onclick=()=>{
 
   // 6) Render حسب التاريخ والفلترة، وحالة Served منطقية
   function render(){
-    const mrnF=fMrn.value.trim();
     const tkF=fTk.value.trim();
     const dateF=fDate.value;
 
@@ -223,7 +219,6 @@ document.getElementById('btnClear').onclick=()=>{
       const isPrinted=r.printed||!!r.tPrinted;
       if(!isPrinted) return false;
       if(dateF && r.tPrinted && !sameDate(r.tPrinted,dateF)) return false;
-      if(mrnF && (!r.mrn || !String(r.mrn).includes(mrnF))) return false;
       if(tkF && String(r.ticket)!==String(tkF)) return false;
       return true;
     }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
