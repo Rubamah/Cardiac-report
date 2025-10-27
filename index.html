@@ -70,7 +70,6 @@
 
   <!-- فلاتر -->
   <div class="filters">
-    <div class="field"><label for="fMrn">بحث حسب MRN</label><input id="fMrn" placeholder="مثال: 123456" inputmode="numeric" /></div>
     <div class="field"><label for="fTicket">بحث حسب رقم التذكرة</label><input id="fTicket" placeholder="مثال: 87" inputmode="numeric" /></div>
     <div class="field"><label for="fDate">التاريخ (حسب وقت الطباعة)</label><input id="fDate" type="date" /></div>
     <div class="actions">
@@ -82,9 +81,9 @@
   <!-- الجدول -->
   <div class="grid">
     <table>
-      <thead><tr>
-        <th>Ticket</th><th>MRN</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
-      </tr></thead>
+<thead><tr>
+  <th>Ticket</th><th>Printed Time</th><th>Served Time</th><th>Waiting Time</th><th>Status</th>
+</tr></thead>
       <tbody id="tbody"></tbody>
     </table>
   </div>
@@ -128,12 +127,10 @@ function startApp(){
   const statPrinted=document.getElementById('statPrinted');
   const statServed=document.getElementById('statServed');
   const statWaiting=document.getElementById('statWaiting');
-  const fMrn=document.getElementById('fMrn');
   const fTk=document.getElementById('fTicket');
   const fDate=document.getElementById('fDate');
-  document.getElementById('btnClear').onclick=()=>{ fMrn.value=''; fTk.value=''; setToday(); render(); };
+document.getElementById('btnClear').onclick=()=>{ fTk.value=''; setToday(); render(); };
   document.getElementById('btnExport').onclick=exportCSV;
-  fMrn.addEventListener('input', render);
   fTk.addEventListener('input', render);
   fDate.addEventListener('change', render);
 
@@ -177,7 +174,7 @@ function startApp(){
     return `${zp(Math.floor(s/3600))}:${zp(Math.floor((s%3600)/60))}:${zp(s%60)}`;
   }
   function upsert(id,patch){
-    const rec = rows.get(id) || {ticket:id,mrn:'',printed:false,served:false,tPrinted:null,tServed:null};
+const rec = rows.get(id) || {ticket:id,printed:false,served:false,tPrinted:null,tServed:null};
     Object.assign(rec, patch);
     // تنظيف: لا نحتفظ بختم خدمة غير صالح (يظهر فاضي)
     if(!isValidServed(rec)) rec.tServed = null;
@@ -186,79 +183,77 @@ function startApp(){
   }
 
   // 5) التحميل/المستمعين — قاعدة: لا ننشئ صفًا إلا من printed
-  const rPrinted=db.ref(`${ROOT}/printed`);
-  const rTP=db.ref(`${ROOT}/times/printed`);
-  const rServed=db.ref(`${ROOT}/served`);
-  const rTS=db.ref(`${ROOT}/times/served`);
-  const rCalls=db.ref(`${ROOT}/calls`);
-  const rTickets=db.ref(`${ROOT}/tickets`);
+// listeners (no MRN)
+const rPrinted = db.ref(`${ROOT}/printed`);
+const rTP      = db.ref(`${ROOT}/times/printed`);
+const rServed  = db.ref(`${ROOT}/served`);
+const rTS      = db.ref(`${ROOT}/times/served`);
+const rCalls   = db.ref(`${ROOT}/calls`);
 
-  rPrinted.on('child_added',  c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
-  rPrinted.on('child_changed',c=> upsert(c.key,{ printed:!!c.val(), tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+rPrinted.on('child_added',   c => upsert(c.key, { printed: !!c.val(), tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
+rPrinted.on('child_changed', c => upsert(c.key, { printed: !!c.val(), tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }));
 
-  rTP.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
-  rTP.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ tPrinted:coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+rTP.on('child_added',   c => { if (rows.has(c.key)) upsert(c.key, { tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
+rTP.on('child_changed', c => { if (rows.has(c.key)) upsert(c.key, { tPrinted: coerce(c.val()) || rows.get(c.key)?.tPrinted || null }); });
 
-  rServed.on('child_added',   c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
-  rServed.on('child_changed', c=> { if(rows.has(c.key)) upsert(c.key,{ served:!!c.val() }); });
+rServed.on('child_added',   c => { if (rows.has(c.key)) upsert(c.key, { served: !!c.val() }); });
+rServed.on('child_changed', c => { if (rows.has(c.key)) upsert(c.key, { served: !!c.val() }); });
 
-  rCalls.on('child_added',    c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
-  rCalls.on('child_changed',  c=> { if(rows.has(c.key)) upsert(c.key,{ tServed:coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+rCalls.on('child_added',    c => { if (rows.has(c.key)) upsert(c.key, { tServed: coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
+rCalls.on('child_changed',  c => { if (rows.has(c.key)) upsert(c.key, { tServed: coerce(c.val()) || rows.get(c.key)?.tServed || null }); });
 
-  rTS.on('child_added',       c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
-  rTS.on('child_changed',     c=> { if(rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key,{ tServed:coerce(c.val()) || null }); });
+rTS.on('child_added',       c => { if (rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key, { tServed: coerce(c.val()) || null }); });
+rTS.on('child_changed',     c => { if (rows.has(c.key) && !rows.get(c.key)?.tServed) upsert(c.key, { tServed: coerce(c.val()) || null }); });
 
-  rTickets.on('child_added',  c=> { if(rows.has(c.key)) upsert(c.key,{ mrn:(c.val()&&c.val().mrn!=null)? String(c.val().mrn):(rows.get(c.key)?.mrn||'') }); });
-  rTickets.on('child_changed',c=> { if(rows.has(c.key)) upsert(c.key,{ mrn:(c.val()&&c.val().mrn!=null)? String(c.val().mrn):(rows.get(c.key)?.mrn||'') }); });
+// NOTE: rTickets and its listeners were removed to drop MRN entirely.
+
 
   // 6) Render حسب التاريخ والفلترة، وحالة Served منطقية
   function render(){
-    const mrnF=fMrn.value.trim();
-    const tkF=fTk.value.trim();
-    const dateF=fDate.value;
+  const tkF = fTk.value.trim();
+  const dateF = fDate.value;
 
-    // يظهر المطبوعة فقط + تاريخ الطباعة + باقي الفلاتر
-    const base=[...rows.values()].filter(r=>{
-      const isPrinted=r.printed||!!r.tPrinted;
-      if(!isPrinted) return false;
-      if(dateF && r.tPrinted && !sameDate(r.tPrinted,dateF)) return false;
-      if(mrnF && (!r.mrn || !String(r.mrn).includes(mrnF))) return false;
-      if(tkF && String(r.ticket)!==String(tkF)) return false;
-      return true;
-    }).sort((a,b)=>Number(a.ticket)-Number(b.ticket));
+  // يظهر المطبوعة فقط + تاريخ الطباعة + باقي الفلاتر
+  const base = [...rows.values()].filter(r=>{
+    const isPrinted = r.printed || !!r.tPrinted;
+    if(!isPrinted) return false;
+    if(dateF && r.tPrinted && !sameDate(r.tPrinted, dateF)) return false;
+    if(tkF && String(r.ticket) !== String(tkF)) return false;
+    return true;
+  }).sort((a,b)=> Number(a.ticket) - Number(b.ticket));
 
-    tbody.innerHTML=base.map(r=>{
-      const served = (!!r.served) || isValidServed(r);      // الحالة المنطقية
-      const printed= (!!r.printed) || !!r.tPrinted;
-      const status = served ? 'Served' : (printed ? 'Printed' : 'No time');
-      const badge  = served ? 'ok'     : (printed ? 'pending' : 'danger');
-      const servedCell = served ? fmt(r.tServed) : '';      // يظل فاضي حتى يتنادَى
-      return `<tr>
-        <td><b>#${r.ticket}</b></td>
-        <td>${r.mrn || ''}</td>
-        <td>${fmt(r.tPrinted)}</td>
-        <td>${servedCell}</td>
-        <td>${dur( waitingMs(r) )}</td>
-        <td><span class="badge ${badge}">${status}</span></td>
-      </tr>`;
-    }).join('');
+  // ✅ build table rows correctly
+  tbody.innerHTML = base.map(r=>{
+    const served = (!!r.served) || isValidServed(r);      // الحالة المنطقية
+    const printed = (!!r.printed) || !!r.tPrinted;
+    const status  = served ? 'Served' : (printed ? 'Printed' : 'No time');
+    const badge   = served ? 'ok'     : (printed ? 'pending' : 'danger');
+    const servedCell = served ? fmt(r.tServed) : '';      // يظل فاضي حتى يتنادَى
+    return `<tr>
+      <td><b>#${r.ticket}</b></td>
+      <td>${fmt(r.tPrinted)}</td>
+      <td>${servedCell}</td>
+      <td>${dur( waitingMs(r) )}</td>
+      <td><span class="badge ${badge}">${status}</span></td>
+    </tr>`;
+  }).join('');
 
-    // إحصاءات على المعروض (تاريخ/فلاتر فقط)
-    statTotal.textContent   = base.length;
-    statPrinted.textContent = base.filter(r=> r.printed || !!r.tPrinted).length;
-    statServed.textContent  = base.filter(r=> (!!r.served) || isValidServed(r)).length;
-    statWaiting.textContent = base.filter(r=>{
-      const p=(r.printed||!!r.tPrinted), s=(!!r.served)||isValidServed(r);
-      return p && !s;
-    }).length;
-  }
+  // ✅ stats on the filtered list
+  statTotal.textContent   = base.length;
+  statPrinted.textContent = base.filter(r=> r.printed || !!r.tPrinted).length;
+  statServed.textContent  = base.filter(r=> (!!r.served) || isValidServed(r)).length;
+  statWaiting.textContent = base.filter(r=>{
+    const p = (r.printed || !!r.tPrinted), s = ((!!r.served) || isValidServed(r));
+    return p && !s;
+  }).length;
+}
 
   // تحديث WT كل ثانية (خفيف وعلى المعروض فقط)
   setInterval(render, 1000);
 
   // تصدير CSV للصفوف المعروضة
   function exportCSV(){
-    const headers=['Ticket','MRN','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
+    const headers=['Ticket','Printed Time','Served Time','Waiting Time (HH:MM:SS)','Status'];
     const out=[headers.join(',')];
     Array.from(tbody.querySelectorAll('tr')).forEach(tr=>{
       const vals=Array.from(tr.children).map(td=> td.innerText.trim());
